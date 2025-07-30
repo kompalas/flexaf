@@ -10,7 +10,7 @@ from src.utils import resample, convert_to_fixed_point
 
 
 __all__ = [
-    'create_features_data', 'extract_feature',
+    'create_features_data_from_df', 'extract_feature',
     'min', 'max', 'mean', 'std', 'sum', 'skewness', 'kurtosis', 'range', 'stretch', 'median',
     'peaks', 'npeaks', 'muPeaks', 'sumPeaks', 'stdPeaks', 'fft'
 ]
@@ -18,7 +18,7 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
-def create_features_data(data, features_dict, inputs_precisions, sampling_rates=[], original_sampling_rate=64, window_size=1, target_clock=1, **kwargs):
+def create_features_data_from_df(data, features_dict, inputs_precisions, sampling_rates=[], original_sampling_rate=64, window_size=1, target_clock=1, **kwargs):
     """Create the dataset with the selected features
     """
     # convert the raw data to FXP depending on the ADC precision
@@ -54,6 +54,42 @@ def create_features_data(data, features_dict, inputs_precisions, sampling_rates=
             features_data = pd.concat([features_data, this_feature_df], axis=1)
 
     return features_data, labels
+
+
+def create_features_data_from_array(data, labels, features_dict, inputs_precisions, sampling_rates=[], original_sampling_rate=64, window_size=1, target_clock=1, **kwargs):
+    """Create the dataset with the selected features
+    """
+    features_data = []
+    for sensor_id, sensor_features in features_dict.items():
+        precision = inputs_precisions[sensor_id]
+        sampling_rate = sampling_rates[sensor_id]
+
+        fxp_data = convert_to_fixed_point(data[:, sensor_id], precision, normalize=None, rescale=True, signed=False, fractional_bits=precision)
+        resampled_data = resample(fxp_data, original_sampling_rate, sampling_rate)
+        resampled_labels = resample(labels, original_sampling_rate, sampling_rate)
+
+        window_shape = window_size * sampling_rate
+        step = target_clock * sampling_rate
+        reshaped_data = np.lib.stride_tricks.sliding_window_view(resampled_data, window_shape=window_shape)[::step]
+        reshaped_labels = np.lib.stride_tricks.sliding_window_view(resampled_labels, window_shape=window_shape)[::step]
+
+        for feature in sensor_features:
+            # extract the given feature
+            this_feature_data = extract_feature(reshaped_data, feature, **kwargs)
+            # keep the most common label within the window
+            filtered_labels = stats.mode(reshaped_labels, axis=1)[0].flatten()
+            # convert the extracted feature output to FXP depending on the ADC precision
+            this_feature_data = convert_to_fixed_point(this_feature_data, precision, normalize='0->1', rescale=True, signed=False, fractional_bits=precision)
+
+            # make sure that the shape of the array with the concatenated features is preserved and no NaNs are inserted
+            if len(features_data) > 0:
+                this_feature_data = np.resize(this_feature_data, (features_data[0].shape[0], ))
+                filtered_labels = np.resize(filtered_labels, (features_data[0].shape[0], ))
+
+            features_data.append(this_feature_data)
+
+    features_data = np.column_stack(features_data)
+    return features_data, filtered_labels
 
 
 ### Feature extraction functions

@@ -2,6 +2,10 @@
 data/wesad*
 data/stress_in_nurses_merged.csv
 data/stress_in_nurses.csv
+data/HAR/
+data/HAR.csv
+data/WISDM/
+data/wisdm.csv
 latest_log_dir
 latest_log_file
 *.log

@@ -1,12 +1,12 @@
 generic_args:
-  name: fs_test
+  name: diff_test
   verbose: False
-  deterministic: False
+  deterministic: True
   global_seed: 123
 
 app_args:
-  dataset_type: affectiveroad  # wesad_merged, wesad_rb, wesad_e4, stressinnurses, spd, affectiveroad, drivedb
-  dataset_file: data/AffectiveROAD.csv
+  dataset_type: wesad_merged  # wesad_merged, wesad_rb, wesad_e4, stressinnurses, spd, affectiveroad, drivedb
+  dataset_file: data/wesad_merged.csv
   binary_classification: False
   three_class_classification: True
   classifier_type: fcnn  # decisiontree, mlp, svm, bnn, tnn, fcnn
@@ -15,3 +15,8 @@ app_args:
   default_window_size: 2  # in seconds
   default_inputs_precision: 8
   performance_target: 1  # in seconds per prediction
+
+selection_args:
+  execute_differentiable_feature_selection: False
+  execute_heuristic_feature_selection: False
+  execute_greedy_feature_selection: True

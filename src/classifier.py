@@ -20,7 +20,7 @@ from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn import metrics
 from src.args import ClassifierType, AccuracyMetric
 from src.utils import accuracy_keras, f1score_keras, transform_categorical, convert_to_fixed_point
-from src.custom_models.mlp.input_gate_layer import InputFeatureGates
+from src.custom_models.mlp.input_gate_layer import InputFeatureGates, ConcreteGate
 from src.hw_templates.dt2verilog import write_tree_to_verilog
 from src.hw_templates.mlp2verilog import write_mlp_to_verilog
 # from src.hw_templates.mlp2verilog_bkp import write_mlp_to_verilog
@@ -51,16 +51,16 @@ def get_classifier(classifier_type, accuracy_metric, tune=False, train_data=None
         raise ValueError(f"Unknown classifier type: {classifier_type}")
 
 
-def set_extra_clf_params(classifier_type, adc_precisions=None, x_test=None, y_test=None, feature_costs=None):
+def set_extra_clf_params(classifier_type, input_precisions=None, x_test=None, y_test=None, feature_costs=None):
     """Set the extra parameters for the classifier class instantiation.
     """
     extra_params = {}
 
     if classifier_type in (ClassifierType.BNN, ClassifierType.TNN, ClassifierType.FCNN):
-        assert adc_precisions is not None, "For Keras models, the ADC precisions must be provided for the input bitwidth."
+        assert input_precisions is not None, "For Keras models, the input precisions must be provided."
         assert y_test is not None and x_test is not None, "For Keras models, the test data must be provided to set the number of classes, features, and samples."
         
-        extra_params['input_bitwidth'] = max(adc_precisions)
+        extra_params['input_bitwidth'] = max(input_precisions)
         extra_params['num_nodes'] = 100
         extra_params['learning_rate'] = 0.1
         extra_params['feature_costs'] = feature_costs
@@ -710,13 +710,15 @@ class FCNNKerasWrapper(KerasNNWrapper):
         num_classes = extra_clf_params.get('num_classes')
         num_features = extra_clf_params.get('num_features')
         input_bitwidth = extra_clf_params.get('input_bitwidth', 8)
-        num_nodes = extra_clf_params.get('num_nodes', 10)
+        num_nodes = extra_clf_params.get('num_nodes', [10])
         learning_rate = extra_clf_params.get('learning_rate', 0.01)
         feature_costs = extra_clf_params.get('feature_costs', [])
-        lambda_reg = extra_clf_params.get('lambda_reg', 0.001)
+        lambda_reg = extra_clf_params.get('lambda_reg', None)
+        temperature = extra_clf_params.get('temperature', 0.1)
+        warmup_epochs = extra_clf_params.get('warmup_epochs', 5)
 
-        model = self.define_model(num_classes, input_bitwidth, num_features, num_nodes, 
-                                  learning_rate, feature_costs, lambda_reg)
+        model = self.define_model(num_classes, input_bitwidth, num_features, num_nodes,
+                                  learning_rate, feature_costs, lambda_reg, temperature, warmup_epochs)
         self._clf = model
         self.num_classes = num_classes
         self.num_features = num_features
@@ -724,17 +726,32 @@ class FCNNKerasWrapper(KerasNNWrapper):
 
     @staticmethod
     def define_model(num_classes, input_bitwidth, num_features, num_nodes=20, learning_rate=0.01,
-                     feature_costs=None, lambda_reg=0.01):
+                     feature_costs=None, lambda_reg=None, temperature=0.1, warmup_epochs=5):
+        if not isinstance(num_nodes, (list, tuple)):
+            num_nodes = [num_nodes]
+
         model = Sequential()
+        if lambda_reg is not None and feature_costs is not None:
+            # model.add(InputFeatureGates(num_features=num_features,
+            #                             feature_costs=feature_costs,
+            #                             lambda_reg=lambda_reg))
+            model.add(ConcreteGate(num_features=num_features,
+                                   feature_costs=feature_costs,
+                                   lambda_reg=lambda_reg,
+                                   temperature=temperature,
+                                   warmup_epochs=warmup_epochs))
+        else:
+            model.add(keras.Input(shape=(num_features,)))
 
-        # model.add(keras.Input(shape=(num_features,)))
-        model.add(InputFeatureGates(num_features=num_features, feature_costs=feature_costs, lambda_reg=lambda_reg))
+        # create as many layers as specified in num_nodes
+        for i, nodes in enumerate(num_nodes):
+            model.add(layers.Dense(units=nodes,
+                                   activation='relu',
+                                   name=f'hidden_dense_{i}'))
 
-        model.add(layers.Dense(units=num_nodes,
-                               activation='relu',
-                               input_shape=(num_features,)))
         model.add(layers.Dense(units=num_classes,
-                               activation='softmax'))
+                               activation='softmax',
+                               name='output'))
 
         model.compile(
             optimizer=optimizers.Adam(learning_rate=learning_rate),

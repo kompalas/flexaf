@@ -1,0 +1,1 @@
+feature_costs_map = {'min': 4, 'max': 4, 'sum': 10, 'mean': 11}

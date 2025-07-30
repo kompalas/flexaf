@@ -52,6 +52,15 @@ def cmd_args(parser):
     # Optimization/Objective-specific arguments
     app_args.add_argument("--performance-target", type=float, default=1.0,
                           help="Set the real-time performance target for the application, in seconds (frequency of predictions). Default is 1 second.")
+    
+    # Feature selection-specific arguments
+    fs_args = app_args.add_mutually_exclusive_group()
+    fs_args.add_argument("--execute-differentiable-feature-selection", action='store_true',
+                         help="Enable differentiable feature selection using ConcreteGate.")
+    fs_args.add_argument("--execute-heuristic-feature-selection", action='store_true',
+                         help="Enable heuristic feature selection.")
+    fs_args.add_argument("--execute-greedy-feature-selection", action='store_true',
+                         help="Enable greedy feature selection.")
     return parser
 
 
