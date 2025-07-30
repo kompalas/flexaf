@@ -62,7 +62,7 @@ def set_extra_clf_params(classifier_type, input_precisions=None, x_test=None, y_
         
         extra_params['input_bitwidth'] = max(input_precisions)
         extra_params['num_nodes'] = 100
-        extra_params['learning_rate'] = 0.1
+        extra_params['learning_rate'] = 0.01
         extra_params['feature_costs'] = feature_costs
         extra_params['lambda_reg'] = 0.0005
 
@@ -376,7 +376,7 @@ class MLPClassifierWrapper(SKLearnClassifierWrapper):
 
     def set_tuned_parameters(self):
         self.tuned_parameters = {
-            'hidden_layer_sizes': [(5,), (10,), (20,), (30,), (50,)],
+            'hidden_layer_sizes': [(5,), (10,), (20,), (50,), (100,), (10, 10), (50, 50), (100, 100)],
         }
 
     def get_architecture(self):

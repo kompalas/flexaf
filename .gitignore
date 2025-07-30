@@ -4,6 +4,7 @@ data/stress_in_nurses_merged.csv
 data/stress_in_nurses.csv
 data/HAR/
 data/HAR.csv
+data/harth.csv
 data/WISDM/
 data/wisdm.csv
 latest_log_dir

@@ -12,7 +12,7 @@ from src.utils import transform_categorical
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    'get_dataset',
+    'get_dataset', 'split_dataset',
     'get_wesad',
     'get_stress_in_nurses',
     'get_spd',
@@ -66,6 +66,11 @@ def get_dataset(dataset_type, dataset_file, resampling_rate=None,
     assert all(max(rates) <= uniform_sampling_rate for rates in sampling_rates.values()), \
         "All sampling rates must be less than or equal to the uniform sampling rate (i.e., no upsampling)"
 
+    # normalize the data
+    for column in data.columns:
+        if column not in ['label', 'subject']:
+            data[column] = normalization(data[column])
+
     sampling_rates = OrderedDict([
         (signal, sampling_rates[signal]) for signal in data.columns 
         if signal not in ['label', 'subject']
@@ -77,6 +82,11 @@ def get_dataset(dataset_type, dataset_file, resampling_rate=None,
     if test_size is None:
         return data, sampling_rates, uniform_sampling_rate
 
+    train_data, test_data = split_dataset(data, test_size)
+    return (train_data, test_data), sampling_rates, uniform_sampling_rate
+
+
+def split_dataset(data, test_size=0.2):
     # Split the dataset into training and testing sets
     subjects = np.random.permutation(data['subject'].unique())
     num_train_subjects = int(len(subjects) * (1 - test_size))
@@ -91,7 +101,7 @@ def get_dataset(dataset_type, dataset_file, resampling_rate=None,
     x_train, y_train = train_data.drop(columns=['label']).values, train_data['label'].values
     x_test, y_test = test_data.drop(columns=['label']).values, test_data['label'].values
 
-    return (x_train, y_train), (x_test, y_test), sampling_rates, uniform_sampling_rate
+    return (x_train, y_train), (x_test, y_test)
 
 
 def get_wesad(data, dataset_type, binary_classification=False, three_class_classification=True):
@@ -167,65 +177,52 @@ def get_wesad(data, dataset_type, binary_classification=False, three_class_class
 
 def get_stress_in_nurses(data):
     """Load the Stress in Nurses dataset and preprocess it."""
-    for column in data.columns:
-        if column not in ['label', 'subject']:
-            data[column] = normalization(data[column])
     sampling_rates = {'X': [32, 16, 8, 4],
                     'Y': [32, 16, 8, 4],
                     'Z': [32, 16, 8, 4],
                     'EDA': [4],
                     'TEMP': [4],
                     'BVP': [64, 32, 16, 8, 4]}
-    
-    return data, sampling_rates, 64
+    uniform_sampling_rate = 64
+    return data, sampling_rates, uniform_sampling_rate
 
 
 def get_spd(data):
     """Load the SPD dataset and preprocess it."""
     data = data.rename(columns={'Stress': 'label', 'ID': 'subject'})
     data = data.drop(columns=['Timestamp', 'HR', 'IBI_d'])
-    for column in data.columns:
-        if column not in ['label', 'subject']:
-            data[column] = normalization(data[column])
     sampling_rates = {'ACC_x': [32, 16, 8, 4],
                         'ACC_y': [32, 16, 8, 4],
                         'ACC_z': [32, 16, 8, 4],
                         'EDA': [4],
                         'TEMP': [4],
                         'BVP': [64, 32, 16, 8, 4]}
-    
-    return data, sampling_rates, 64
+    uniform_sampling_rate = 64
+    return data, sampling_rates, uniform_sampling_rate
 
 
 def get_affective_road(data):
     """Load the AffectiveROAD dataset and preprocess it."""
     data = data.rename(columns={'STRESS': 'label', 'ID': 'subject'})
-    for column in data.columns:
-        if column not in ['label', 'subject']:
-            data[column] = normalization(data[column])
     sampling_rates = {'ACC_X': [32, 16, 8, 4],
                         'ACC_Y': [32, 16, 8, 4],
                         'ACC_Z': [32, 16, 8, 4],
                         'EDA': [4],
                         'TEMP': [4],
                         'BVP': [64, 32, 16, 8, 4]}
-    
-    return data, sampling_rates, 64
+    uniform_sampling_rate = 64
+    return data, sampling_rates, uniform_sampling_rate
 
 
 def get_drive_db(data):
     """Load the DriveDB dataset and preprocess it."""
     data = data.rename(columns={'Stress': 'label'})
-    for column in data.columns:
-        if column not in ['label', 'subject']:
-            data[column] = normalization(data[column])
     sampling_rates = {'ECG': [16, 8, 4],
                         'EMG': [16, 8, 4],
                         'foot_EDA': [16, 8, 4],
                         'hand_EDA': [16, 8, 4],
                         'RESP': [16, 8, 4]}
     uniform_sampling_rate = 16
-
     return data, sampling_rates, uniform_sampling_rate
 
 
@@ -236,31 +233,25 @@ def get_coswara(data):
 
 def get_har(data):
     """Load the HAR dataset and preprocess it."""
-    for column in data.columns:
-        if column not in ['label', 'subject']:
-            data[column] = normalization(data[column])
     sampling_rates = {column: [50, 32, 16, 8, 4] for column in data.columns
                       if column not in ['label', 'subject']}
-    # original sampling rate
     uniform_sampling_rate = 50
-
     return data, sampling_rates, uniform_sampling_rate
 
 
 def get_harth(data):
     """Load the HARTH dataset and preprocess it."""
-    raise NotImplementedError("HARTH dataset loading is not implemented")
+    data = data.drop(columns=['timestamp'])
+    sampling_rates = {column: [50, 32, 16, 8, 4] for column in data.columns
+                      if column not in ['label', 'subject']}
+    uniform_sampling_rate = 50
+    return data, sampling_rates, uniform_sampling_rate
 
 
 def get_wisdm(data):
     """Load the WISDM dataset and preprocess it."""
-    for column in data.columns:
-        if column not in ['label', 'subject']:
-            data[column] = normalization(data[column])
     sampling_rates = {column: [20, 16, 8, 4] for column in data.columns 
                       if column not in ['label', 'subject']}
-    # original sampling rate
     uniform_sampling_rate = 20
-    
     return data, sampling_rates, uniform_sampling_rate
 
