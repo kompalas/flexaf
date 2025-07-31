@@ -61,6 +61,8 @@ def cmd_args(parser):
                          help="Enable heuristic feature selection.")
     fs_args.add_argument("--execute-greedy-feature-selection", action='store_true',
                          help="Enable greedy feature selection.")
+    fs_args.add_argument("--execute-statistical-feature-selection", action='store_true',
+                         help="Enable statistical feature selection.")
     return parser
 
 

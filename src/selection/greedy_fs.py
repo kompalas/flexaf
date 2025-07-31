@@ -2,14 +2,11 @@ import numpy as np
 import os
 import pandas as pd
 import logging
-from collections import OrderedDict
-from src.selection import feature_costs_map
+from src.selection import prepare_data
 from keras.callbacks import EarlyStopping
 from src.args import AccuracyMetric
 from src.classifier import FCNNKerasWrapper, ClassifierType, get_classifier, set_extra_clf_params
-from src.dataset import get_dataset
-from src.utils import transform_categorical
-from src.features import create_features_data_from_array
+
 
 logger = logging.getLogger(__name__)
 
@@ -44,53 +41,9 @@ def run_greedy_feature_selection(args):
     """Run greedy feature selection on the dataset."""
     training_epochs = 100
 
-    # Load data
-    data, sampling_rates, dataset_sr = get_dataset(
-        args.dataset_type, args.dataset_file,
-        resampling_rate=None,
-        binary_classification=args.binary_classification,
-        three_class_classification=args.three_class_classification,
-        test_size=args.test_size
-    )
-    train_data, test_data = data
-    x_train_raw, y_train = train_data
-    x_test_raw, y_test = test_data
-    num_classes = len(np.unique(y_train))
-    num_sensors = x_train_raw.shape[1]
-
-    features_dict = OrderedDict([
-        (sensor_id, {'min', 'max', 'sum', 'mean'})
-        for sensor_id in range(0, num_sensors)
-    ])
-    feature_costs = np.array([
-        feature_costs_map[feature] 
-        for sensor_features in features_dict.values()
-        for feature in sensor_features
-    ])
-    
-    input_precisions = [args.default_inputs_precision] * num_sensors
-    new_sampling_rates = [dataset_sr] * num_sensors
-
-    x_train, y_train = create_features_data_from_array(
-        data=x_train_raw,
-        labels=y_train,
-        features_dict=features_dict,
-        inputs_precisions=input_precisions,
-        window_size=args.default_window_size,
-        dataset_sampling_rate=dataset_sr,
-        sampling_rates=new_sampling_rates,
-        target_clock=args.performance_target
-    )
-    x_test, y_test = create_features_data_from_array(
-        data=x_test_raw,
-        labels=y_test,
-        features_dict=features_dict,
-        inputs_precisions=input_precisions,
-        window_size=args.default_window_size,
-        dataset_sampling_rate=dataset_sr,
-        sampling_rates=new_sampling_rates,
-        target_clock=args.performance_target
-    )
+    train_data, test_data, categ_labels, feature_costs, extra_params, input_precisions = prepare_data(args)
+    x_train, y_train = train_data
+    x_test, y_test = test_data
 
     results = []
 

@@ -5,6 +5,7 @@ from src.utils import env_cfg
 from src.selection.gate_fs import run_differentiable_feature_selection
 from src.selection.heuristic_fs import run_heuristic_feature_selection
 from src.selection.greedy_fs import run_greedy_feature_selection
+from src.selection.statistical import run_statistical_feature_selection
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,11 @@ def main():
         args.name = f"greedy_fs_{args.name}"
         logger.info("Running greedy feature selection...")
         run_greedy_feature_selection(args)
+
+    elif args.execute_statistical_feature_selection:
+        args.name = f"statistical_fs_{args.name}"
+        logger.info("Running statistical feature selection...")
+        run_statistical_feature_selection(args)
 
     else:
         # simply load the dataset

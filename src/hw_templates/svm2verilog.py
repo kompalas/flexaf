@@ -319,6 +319,7 @@ def svm_to_verilog_ovr(svm_model, inp_widths, w_widths, input_name, output_name,
         weights = convert_to_fixed_point(svm_model.coef_[i], precision=this_wfxp.get_width(), signed=True, rescale=False, fractional_bits=this_wfxp.frac)
 
         bias_int_bits = get_width(get_maxabs(svm_model.intercept_[i]))
+        bias_int_bits = min(bias_int_bits, w_width - 1)
         bias_fxp = ConvFxp(1, bias_int_bits, w_width - 1 - bias_int_bits)
         bias = bias_fxp.to_fixed(svm_model.intercept_[i])
 

@@ -34,7 +34,8 @@ def logging_cfg(logger_name, logfile, to_stdout=False):
 
 
 def classifier_hw_evaluation(classifier, test_data, input_precision, weight_precision, savedir, 
-                             copy_results=True, cleanup=False, rescale_inputs=False, simclk_ms=1, prefix='', **kwargs):
+                             copy_results=True, cleanup=False, rescale_inputs=False, simclk_ms=1, prefix='', only_rtl=False,
+                             **kwargs):
     """Perform hardware evaluation of the classifier."""
     x_test, y_test = test_data
 
@@ -82,8 +83,10 @@ def classifier_hw_evaluation(classifier, test_data, input_precision, weight_prec
                                   inputs_file=expected_file,
                                   modifier=lambda x: int(x))
     # execute the synthesis/simulation and get the results
-    results = execute_hw_evaluation(savedir, hdl_dir, sim_dir, synclk_ms=simclk_ms, copy_results=copy_results, cleanup=cleanup, prefix=prefix)
-    # results = execute_rtl_evaluation(savedir, hdl_dir, sim_dir, cleanup=cleanup, prefix=prefix)
+    if only_rtl:
+        results = execute_rtl_evaluation(savedir, hdl_dir, sim_dir, cleanup=cleanup, prefix=prefix)
+    else:
+        results = execute_hw_evaluation(savedir, hdl_dir, sim_dir, synclk_ms=simclk_ms, copy_results=copy_results, cleanup=cleanup, prefix=prefix)
 
     # check the accuracy from the simulation output
     simulation_output = np.loadtxt(output_file, dtype=float)

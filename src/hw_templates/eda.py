@@ -1,4 +1,4 @@
-import os.path
+import os
 import subprocess
 import shutil
 import logging
@@ -15,6 +15,7 @@ SynthesisResults = namedtuple("SynthesisResults", ['area', 'delay', 'power'])
 
 def create_new_evaluation_dir(prefix=''):
     """Create a new evaluation directory."""
+    os.makedirs(os.path.join(project_dir, 'hw_eval', 'test'), exist_ok=True)
     prefix = 'test__' if prefix == '' else prefix + '__'
     dirname = f"{prefix}{get_timestamp()}"
     hw_eval_dir = os.path.join(project_dir, 'hw_eval', 'test', dirname)
