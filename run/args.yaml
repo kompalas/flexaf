@@ -5,18 +5,19 @@ generic_args:
   global_seed: 123
 
 app_args:
-  dataset_type: harth  # wesad_merged, wesad_rb, wesad_e4, stressinnurses, spd, affectiveroad, drivedb, har, wismd, harth
-  dataset_file: data/harth.csv
+  dataset_type: affectiveroad  # wesad_merged, wesad_rb, wesad_e4, stressinnurses, spd, affectiveroad, drivedb, har, wismd, harth
+  dataset_file: data/affective_road.csv
   binary_classification: False
   three_class_classification: True
-  classifier_type: fcnn  # decisiontree, mlp, svm, bnn, tnn, fcnn
-  tune_classifier: True
+  classifier_type: mlp  # decisiontree, mlp, svm, bnn, tnn, fcnn
+  tune_classifier: False
   test_size: 0.3
   default_window_size: 2  # in seconds
   default_inputs_precision: 4
   performance_target: 1  # in seconds per prediction
 
 selection_args:
-  execute_differentiable_feature_selection: True
+  execute_differentiable_feature_selection: False
   execute_heuristic_feature_selection: False
   execute_greedy_feature_selection: False
+  execute_statistical_feature_selection: False

@@ -1,11 +1,13 @@
-import os
+import numpy as np
 import traceback
 import logging
+from collections import OrderedDict
 from src.utils import env_cfg
 from src.selection.gate_fs import run_differentiable_feature_selection
 from src.selection.heuristic_fs import run_heuristic_feature_selection
 from src.selection.greedy_fs import run_greedy_feature_selection
 from src.selection.statistical import run_statistical_feature_selection
+from src.selection.simple_eval import perform_basic_evaluation
 
 logger = logging.getLogger(__name__)
 
@@ -35,16 +37,8 @@ def main():
         run_statistical_feature_selection(args)
 
     else:
-        # simply load the dataset
-        logger.info("No feature selection method specified. Loading dataset...")
-        from src.dataset import get_dataset
-        train_data, test_data, sampling_rates, dataset_sr = get_dataset(
-            args.dataset_type, args.dataset_file,
-            resampling_rate=32,
-            binary_classification=args.binary_classification,
-            three_class_classification=args.three_class_classification,
-            test_size=args.test_size
-        )
+        logger.info("No feature selection method specified, running basic evaluation...")
+        perform_basic_evaluation(args)
 
 
 if __name__ == '__main__':

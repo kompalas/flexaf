@@ -1,18 +1,18 @@
-from src.classifier import set_extra_clf_params
-from src.dataset import get_dataset
-from src.utils import transform_categorical
-from src.features import create_features_data_from_array
 import logging
-import numpy as np
 from collections import OrderedDict
+import numpy as np
+from src.dataset import get_dataset
+from src.selection import feature_costs_map
+from src.features import create_features_data_from_array
+from src.classifier import set_extra_clf_params, get_classifier
+from src.args import AccuracyMetric
+
 
 logger = logging.getLogger(__name__)
 
 
-feature_costs_map = {'min': 4, 'max': 4, 'sum': 10, 'mean': 11}
-
-
-def prepare_feature_data(args):
+def perform_basic_evaluation(args):
+    """Perform a simple evaluation of the dataset with basic features and without tuning."""
     data, sampling_rates, dataset_sr = get_dataset(
         args.dataset_type, args.dataset_file,
         resampling_rate=None,
@@ -23,7 +23,6 @@ def prepare_feature_data(args):
     train_data, test_data = data
     x_train, y_train = train_data
     x_test, y_test = test_data
-    num_classes = len(np.unique(y_train))
     num_sensors = x_train.shape[1]
 
     features_dict = OrderedDict([
@@ -35,9 +34,12 @@ def prepare_feature_data(args):
         for sensor_features in features_dict.values()
         for feature in sensor_features
     ])
-    
     input_precisions = [args.default_inputs_precision] * num_sensors
-    new_sampling_rates = [dataset_sr] * num_sensors  # this forces no resampling during feature extraction (equal to the 'dataset_sampling_rate')
+
+    # NOTE: this forces no resampling during feature extraction (equal to the 'dataset_sampling_rate')
+    #       change to 'sampling_rates' if you want to use different rates per sensor
+    new_sampling_rates = [dataset_sr] * num_sensors
+
     x_train_features, y_train = create_features_data_from_array(
         data=x_train,
         labels=y_train,
@@ -58,8 +60,6 @@ def prepare_feature_data(args):
         sampling_rates=new_sampling_rates,
         target_clock=args.performance_target
     )
-    y_train_categ = transform_categorical(y_train, num_classes)
-    y_test_categ = transform_categorical(y_test, num_classes)
 
     extra_params = set_extra_clf_params(
         args.classifier_type,
@@ -68,5 +68,14 @@ def prepare_feature_data(args):
         y_test=y_test,
         feature_costs=feature_costs
     )
-    filtered_params = {k: extra_params[k] for k in ['num_classes', 'num_features', 'num_samples', 'test_data'] if k in extra_params}
-    return (x_train_features, y_train), (x_test_features, y_test), (y_train_categ, y_test_categ), feature_costs, filtered_params, input_precisions
+    classifier = get_classifier(
+        args.classifier_type,
+        accuracy_metric=AccuracyMetric.Accuracy,
+        tune=args.tune_classifier,
+        train_data=(x_train_features, y_train),
+        seed=args.global_seed,
+        **extra_params
+    )
+    accuracy = classifier.train(x_train_features, y_train,
+                                x_test_features, y_test)
+    logger.info(f"Accuracy: {accuracy:.4f}")

@@ -5,7 +5,7 @@ import numpy as np
 from skfeature.function.information_theoretical_based import JMI, DISR
 from skfeature.function.similarity_based import fisher_score
 from sklearn.feature_selection import f_classif
-from src.selection import prepare_data
+from src.selection import prepare_feature_data
 from src.args import classifier_type_arg, AccuracyMetric, ClassifierType
 from src.classifier import set_extra_clf_params, get_classifier
 from src.hw_templates.utils import classifier_hw_evaluation
@@ -117,7 +117,7 @@ def run_statistical_feature_selection(args):
     os.makedirs(hw_eval_dir, exist_ok=True)
 
     # load dataset and split into train/test
-    train_data, test_data, categ_labels, feature_costs, extra_params, _ = prepare_data(args)
+    train_data, test_data, categ_labels, feature_costs, extra_params, _ = prepare_feature_data(args)
     x_train, y_train = train_data
     x_test, y_test = test_data
 

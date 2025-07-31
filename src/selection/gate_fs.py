@@ -8,7 +8,7 @@ import tensorflow as tf
 from functools import partial
 from src.args import AccuracyMetric
 from src.classifier import FCNNKerasWrapper
-from src.selection import prepare_data
+from src.selection import prepare_feature_data
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,7 @@ def log_and_save_results(info, resdir):
 
 def run_differentiable_feature_selection(args):
     """Run the differentiable feature selection experiment with ConcreteGate."""
-    train_data, test_data, categ_labels, feature_costs, extra_params = prepare_data(args)
+    train_data, test_data, categ_labels, feature_costs, extra_params, input_precisions = prepare_feature_data(args)
     x_train, y_train = train_data
     x_test, y_test = test_data
     y_train_categ, y_test_categ = categ_labels

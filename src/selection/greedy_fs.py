@@ -2,7 +2,7 @@ import numpy as np
 import os
 import pandas as pd
 import logging
-from src.selection import prepare_data
+from src.selection import prepare_feature_data
 from keras.callbacks import EarlyStopping
 from src.args import AccuracyMetric
 from src.classifier import FCNNKerasWrapper, ClassifierType, get_classifier, set_extra_clf_params
@@ -41,7 +41,7 @@ def run_greedy_feature_selection(args):
     """Run greedy feature selection on the dataset."""
     training_epochs = 100
 
-    train_data, test_data, categ_labels, feature_costs, extra_params, input_precisions = prepare_data(args)
+    train_data, test_data, categ_labels, feature_costs, extra_params, input_precisions = prepare_feature_data(args)
     x_train, y_train = train_data
     x_test, y_test = test_data
 
