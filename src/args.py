@@ -28,6 +28,8 @@ def cmd_args(parser):
     app_args.add_argument("--dataset", type=dataset_type_arg, dest='dataset_type', default='wesad_rb',
                           help=f"Specify the dataset. Options: {' | '.join(str_to_dataset_type_map.keys())}")
     app_args.add_argument("--dataset-file", type=str, help="Specify the dataset file path.")
+    app_args.add_argument("--uniform-resampling-rate", type=int, default=32,
+                          help="Specify the uniform resampling rate for the dataset in Hz. Default is 32 Hz. Set to None for no resampling.")
     classification_type_args = app_args.add_mutually_exclusive_group()
     classification_type_args.add_argument("--binary-classification", action='store_true',
                                           help="Enable binary classification (Only for WESAD).")

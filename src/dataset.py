@@ -6,7 +6,7 @@ from collections import OrderedDict
 from src.args import DatasetType
 from src.utils import normalization, resample_dataframe
 from sklearn.model_selection import train_test_split
-from src.features import create_features_data_from_df
+from src.features import create_features_from_df_sliding
 from src.utils import transform_categorical
 
 logger = logging.getLogger(__name__)
@@ -78,6 +78,7 @@ def get_dataset(dataset_type, dataset_file, resampling_rate=None,
 
     if resampling_rate is not None:
         data = resample_dataframe(data, uniform_sampling_rate, resampling_rate)
+        uniform_sampling_rate = resampling_rate
 
     if test_size is None:
         return data, sampling_rates, uniform_sampling_rate
@@ -87,7 +88,7 @@ def get_dataset(dataset_type, dataset_file, resampling_rate=None,
 
 
 def split_dataset(data, test_size=0.2):
-    # Split the dataset into training and testing sets
+    """Split the dataset into training and testing sets"""
     subjects = np.random.permutation(data['subject'].unique())
     num_train_subjects = int(len(subjects) * (1 - test_size))
     train_subjects = subjects[:num_train_subjects]
@@ -95,11 +96,11 @@ def split_dataset(data, test_size=0.2):
 
     train_data = data[data['subject'].isin(train_subjects)]
     test_data = data[data['subject'].isin(test_subjects)]
-    train_data = train_data.drop(columns=['subject'])
-    test_data = test_data.drop(columns=['subject'])
 
-    x_train, y_train = train_data.drop(columns=['label']).values, train_data['label'].values
-    x_test, y_test = test_data.drop(columns=['label']).values, test_data['label'].values
+    x_train = train_data.drop(columns=['subject', 'label']).values
+    y_train = train_data['label'].values
+    x_test = test_data.drop(columns=['subject', 'label']).values
+    y_test = test_data['label'].values
 
     return (x_train, y_train), (x_test, y_test)
 
@@ -133,50 +134,37 @@ def get_wesad(data, dataset_type, binary_classification=False, three_class_class
         return data
 
     data = reduce_wesad_classes(data)
+    uniform_sampling_rate = 128
+    sampling_rates = {'ax': [128, 64, 32, 16, 8, 4],
+                        'ay': [128, 64, 32, 16, 8, 4],
+                        'az': [128, 64, 32, 16, 8, 4],
+                        'emg': [128, 64, 32, 16, 8, 4],
+                        'eda': [128, 64, 32, 16, 8, 4],
+                        'temp': [4],
+                        'ecg': [128, 64, 32, 16, 8, 4],
+                        'resp': [128, 64, 32, 16, 8, 4],
+                        'ax_wrist': [32, 16, 8, 4],
+                        'ay_wrist': [32, 16, 8, 4],
+                        'az_wrist': [32, 16, 8, 4],
+                        'eda_wrist': [4],
+                        'temp_wrist': [4],
+                        'bvp_wrist': [64, 32, 16, 8, 4]}
+
     if dataset_type == DatasetType.WESAD_RB:
         data = data.drop(columns=[column for column in data.columns if 'wrist' in column])
-        uniform_sampling_rate = 128
-        sampling_rates = {'ax': [128, 64, 32, 16, 8, 4],
-                            'ay': [128, 64, 32, 16, 8, 4],
-                            'az': [128, 64, 32, 16, 8, 4],
-                            'emg': [128, 64, 32, 16, 8, 4],
-                            'eda': [128, 64, 32, 16, 8, 4],
-                            'temp': [4],
-                            'ecg': [128, 64, 32, 16, 8, 4],
-                            'resp': [128, 64, 32, 16, 8, 4]}
 
     elif dataset_type == DatasetType.WESAD_E4:
         data = data.drop(columns=[column for column in data.columns if 'wrist' not in column and 'label' not in column and 'subject' not in column])
-        uniform_sampling_rate = 128
-        sampling_rates = {'ax_wrist': [32, 16, 8, 4],
-                            'ay_wrist': [32, 16, 8, 4],
-                            'az_wrist': [32, 16, 8, 4],
-                            'eda_wrist': [4],
-                            'temp_wrist': [4],
-                            'bvp_wrist': [64, 32, 16, 8, 4]}
 
-    elif dataset_type == DatasetType.WESAD_Merged:
-        uniform_sampling_rate = 128
-        sampling_rates = {'ax': [128, 64, 32, 16, 8, 4],
-                            'ay': [128, 64, 32, 16, 8, 4],
-                            'az': [128, 64, 32, 16, 8, 4],
-                            'emg': [128, 64, 32, 16, 8, 4],
-                            'eda': [128, 64, 32, 16, 8, 4],
-                            'temp': [4],
-                            'ecg': [128, 64, 32, 16, 8, 4],
-                            'resp': [128, 64, 32, 16, 8, 4],
-                            'ax_wrist': [32, 16, 8, 4],
-                            'ay_wrist': [32, 16, 8, 4],
-                            'az_wrist': [32, 16, 8, 4],
-                            'eda_wrist': [4],
-                            'temp_wrist': [4],
-                            'bvp_wrist': [64, 32, 16, 8, 4]}
-        
+    sampling_rates = {column: rates for column, rates in sampling_rates.items() 
+                      if column in data.columns}
     return data, sampling_rates, uniform_sampling_rate
 
 
 def get_stress_in_nurses(data):
     """Load the Stress in Nurses dataset and preprocess it."""
+    data = data.rename(columns={'id': 'subject'}) 
+    data = data.drop(columns=['datetime'])
     sampling_rates = {'X': [32, 16, 8, 4],
                     'Y': [32, 16, 8, 4],
                     'Z': [32, 16, 8, 4],

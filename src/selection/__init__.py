@@ -1,7 +1,7 @@
 from src.classifier import set_extra_clf_params
 from src.dataset import get_dataset
 from src.utils import transform_categorical
-from src.features import create_features_data_from_array
+from src.features import create_features_from_array_sliding
 import logging
 import numpy as np
 from collections import OrderedDict
@@ -38,7 +38,7 @@ def prepare_feature_data(args):
     
     input_precisions = [args.default_inputs_precision] * num_sensors
     new_sampling_rates = [dataset_sr] * num_sensors  # this forces no resampling during feature extraction (equal to the 'dataset_sampling_rate')
-    x_train_features, y_train = create_features_data_from_array(
+    x_train_features, y_train = create_features_from_array_sliding(
         data=x_train,
         labels=y_train,
         features_dict=features_dict,
@@ -48,7 +48,7 @@ def prepare_feature_data(args):
         sampling_rates=new_sampling_rates,
         target_clock=args.performance_target
     )
-    x_test_features, y_test = create_features_data_from_array(
+    x_test_features, y_test = create_features_from_array_sliding(
         data=x_test,
         labels=y_test,
         features_dict=features_dict,

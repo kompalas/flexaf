@@ -11,7 +11,7 @@ from src.custom_models.mlp.input_gate_layer import ConcreteGate
 from src.args import AccuracyMetric
 from src.utils import env_cfg
 from src.dataset import get_dataset
-from src.features import create_features_data_from_df
+from src.features import create_features_from_df_sliding
 
 
 logger = logging.getLogger(__name__)
@@ -111,7 +111,7 @@ def run():
 
     input_precisions = [args.default_inputs_precision] * num_sensors
     new_sampling_rates = [new_sampling_rate] * num_sensors
-    features_data, labels = create_features_data_from_df(data=data,
+    features_data, labels = create_features_from_df_sliding(data=data,
                                                 features_dict=features_dict, 
                                                 inputs_precisions=input_precisions, 
                                                 window_size=args.default_window_size,

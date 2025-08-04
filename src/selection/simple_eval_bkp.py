@@ -3,7 +3,7 @@ from collections import OrderedDict
 import numpy as np
 from src.dataset import get_dataset
 from src.selection import feature_costs_map
-from src.features import create_features_from_array, create_features_from_array_sliding
+from src.features import create_features_from_array_sliding
 from src.classifier import set_extra_clf_params, get_classifier
 from src.args import AccuracyMetric
 
@@ -21,27 +21,15 @@ def perform_basic_evaluation(args):
         resampling_rate=args.uniform_resampling_rate,
         binary_classification=args.binary_classification,
         three_class_classification=args.three_class_classification,
-        test_size=args.test_size
-        # test_size=None
+        test_size=None#args.test_size
     )
-    # data.to_csv(f'{args.dataset_type.name.lower()}_32hz.csv', index=False)
 
+    num_sensors = len(data.columns) - 2
     # Uncomment the following lines if you want to use a specific train/test split
-    train_data, test_data = data
-    x_train, y_train = train_data
-    x_test, y_test = test_data
-    num_sensors = x_train.shape[1]
-
-
-    # from sklearn.model_selection import train_test_split
-    # num_sensors = len(data.columns) - 2
-    # values = data.drop(columns=['label', 'subject']).values
-    # labels = data['label'].values
-    # x_train, x_test, y_train, y_test = train_test_split(values, labels,
-    #                                                     test_size=args.test_size,
-    #                                                     stratify=labels,
-    #                                                     random_state=args.global_seed)
-
+    # train_data, test_data = data
+    # x_train, y_train = train_data
+    # x_test, y_test = test_data
+    # num_sensors = x_train.shape[1]
 
     features_dict = OrderedDict([
         (sensor_id, selected_features)
@@ -59,26 +47,45 @@ def perform_basic_evaluation(args):
     # change to this if you want to use different rates per sensor
     # new_sampling_rates = [max(rates) for sensor, rates in sampling_rates.items()]
 
-    x_train_features, y_train = create_features_from_array(
-        data=x_train,
-        labels=y_train,
+
+    # x_train_features, y_train = create_features_data_from_array(
+    #     data=x_train,
+    #     labels=y_train,
+    #     features_dict=features_dict,
+    #     inputs_precisions=input_precisions,
+    #     window_size=args.default_window_size,
+    #     dataset_sampling_rate=dataset_sr,
+    #     sampling_rates=new_sampling_rates,
+    #     target_clock=args.performance_target
+    # )
+    # x_test_features, y_test = create_features_data_from_array(
+    #     data=x_test,
+    #     labels=y_test,
+    #     features_dict=features_dict,
+    #     inputs_precisions=input_precisions,
+    #     window_size=args.default_window_size,
+    #     dataset_sampling_rate=dataset_sr,
+    #     sampling_rates=new_sampling_rates,
+    #     target_clock=args.performance_target
+    # )
+
+    from sklearn.model_selection import train_test_split
+    from src.features import create_features_from_df_sliding
+    features_data, labels = create_features_from_df_sliding(
+        data=data,
         features_dict=features_dict,
         inputs_precisions=input_precisions,
-        # window_size=args.default_window_size,
-        original_sampling_rate=dataset_sr,
+        window_size=args.default_window_size,
         sampling_rates=new_sampling_rates,
-        # target_clock=args.performance_target
+        target_clock=args.performance_target
     )
-    x_test_features, y_test = create_features_from_array(
-        data=x_test,
-        labels=y_test,
-        features_dict=features_dict,
-        inputs_precisions=input_precisions,
-        # window_size=args.default_window_size,
-        original_sampling_rate=dataset_sr,
-        sampling_rates=new_sampling_rates,
-        # target_clock=args.performance_target
-    )
+    x_selected = features_data.values
+    features_data['label'] = labels
+    x_train_features, x_test_features, y_train, y_test = train_test_split(x_selected, labels,
+                                                        test_size=args.test_size,
+                                                        random_state=args.global_seed)
+
+
 
     extra_params = set_extra_clf_params(
         args.classifier_type,

@@ -5,12 +5,13 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 import scipy.fft as scipy_fft
+from copy import deepcopy
 from scipy.signal import find_peaks
 from src.utils import resample, convert_to_fixed_point
 
 
 __all__ = [
-    'create_features_data_from_df', 'extract_feature',
+    'create_features_from_df_sliding', 'extract_feature',
     'min', 'max', 'mean', 'std', 'sum', 'skewness', 'kurtosis', 'range', 'stretch', 'median',
     'peaks', 'npeaks', 'muPeaks', 'sumPeaks', 'stdPeaks', 'fft'
 ]
@@ -18,7 +19,7 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
-def create_features_data_from_df(data, features_dict, inputs_precisions, sampling_rates=[], original_sampling_rate=64, window_size=1, target_clock=1, **kwargs):
+def create_features_from_df_sliding(data, features_dict, inputs_precisions, sampling_rates=[], original_sampling_rate=64, window_size=1, target_clock=1, **kwargs):
     """Create the dataset with the selected features
     """
     # convert the raw data to FXP depending on the ADC precision
@@ -56,7 +57,7 @@ def create_features_data_from_df(data, features_dict, inputs_precisions, samplin
     return features_data, labels
 
 
-def create_features_data_from_array(data, labels, features_dict, inputs_precisions, sampling_rates=[], original_sampling_rate=64, window_size=1, target_clock=1, **kwargs):
+def create_features_from_array_sliding(data, labels, features_dict, inputs_precisions, sampling_rates=[], original_sampling_rate=64, window_size=1, target_clock=1):
     """Create the dataset with the selected features
     """
     features_data = []
@@ -75,7 +76,7 @@ def create_features_data_from_array(data, labels, features_dict, inputs_precisio
 
         for feature in sensor_features:
             # extract the given feature
-            this_feature_data = extract_feature(reshaped_data, feature, **kwargs)
+            this_feature_data = extract_feature(reshaped_data, feature)
             # keep the most common label within the window
             filtered_labels = stats.mode(reshaped_labels, axis=1)[0].flatten()
             # convert the extracted feature output to FXP depending on the ADC precision
@@ -92,9 +93,49 @@ def create_features_data_from_array(data, labels, features_dict, inputs_precisio
     return features_data, filtered_labels
 
 
+def create_features_from_array(data, labels, features_dict, inputs_precisions, sampling_rates=[], original_sampling_rate=64):
+    """Create the dataset with the selected features
+    """
+    features_data = []
+    max_length = 0
+    saved_labels = None
+    for sensor_id, sensor_features in features_dict.items():
+        precision = inputs_precisions[sensor_id]
+        sampling_rate = sampling_rates[sensor_id]
+
+        fxp_data = convert_to_fixed_point(data[:, sensor_id], precision, normalize=None, rescale=True, signed=False, fractional_bits=precision)
+        resampled_data = resample(fxp_data, original_sampling_rate, sampling_rate)
+        resampled_labels = resample(labels, original_sampling_rate, sampling_rate)
+
+        # NOTE: This assumes a non-overlapping sliding window, equal to the given sampling rate
+        window_shape = step = sampling_rate
+        reshaped_data = np.lib.stride_tricks.sliding_window_view(resampled_data, window_shape=window_shape)[::step]
+        reshaped_labels = np.lib.stride_tricks.sliding_window_view(resampled_labels, window_shape=window_shape)[::step]
+        # keep the most common label within the window
+        filtered_labels = stats.mode(reshaped_labels, axis=1)[0]
+
+        for feature in sensor_features:
+            # extract the given feature and convert it to fixed-point, rescaling it to the range [0, 1]
+            this_feature_data = extract_feature(reshaped_data, feature)
+            this_feature_data = convert_to_fixed_point(this_feature_data, precision, normalize='0->1', rescale=True, signed=False, fractional_bits=precision)
+
+            if len(features_data) > 0 and this_feature_data.shape[0] > max_length:
+                # If the feature data length does not match, pad all elements to the max length with zeros
+                for inserted_feature in features_data:
+                    inserted_feature.resize((max_length, ), refcheck=False)
+                    # keep the labels of the longest feature
+                    saved_labels = deepcopy(filtered_labels)
+
+            features_data.append(this_feature_data)
+            max_length = max(item.shape[0] for item in features_data)
+
+    features_data = np.column_stack(features_data)
+    return features_data, saved_labels if saved_labels is not None else filtered_labels
+
+
 ### Feature extraction functions
 
-def extract_feature(data, feature, simplified=False, **kwargs):
+def extract_feature(data, feature, simplified=False):
     """Extract a feature from a given sensor data"""
     suffix = ''
     if simplified and f'{feature}_feature_simplified' in globals():
