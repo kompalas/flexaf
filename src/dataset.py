@@ -5,9 +5,7 @@ from functools import partial
 from collections import OrderedDict
 from src.args import DatasetType
 from src.utils import normalization, resample_dataframe
-from sklearn.model_selection import train_test_split
-from src.features import create_features_from_df_sliding
-from src.utils import transform_categorical
+from sklearn.model_selection import StratifiedShuffleSplit
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +64,13 @@ def get_dataset(dataset_type, dataset_file, resampling_rate=None,
     assert all(max(rates) <= uniform_sampling_rate for rates in sampling_rates.values()), \
         "All sampling rates must be less than or equal to the uniform sampling rate (i.e., no upsampling)"
 
+    # reorganize columns to have 'label' and 'subject' at the end
+    columns = [col for col in data.columns if col not in ['label', 'subject']] + ['subject', 'label']
+    data = data[columns]
+
     # normalize the data
-    for column in data.columns:
-        if column not in ['label', 'subject']:
-            data[column] = normalization(data[column])
+    for column in data.columns[:-2]:  # Exclude 'label' and 'subject'
+        data[column] = normalization(data[column])
 
     sampling_rates = OrderedDict([
         (signal, sampling_rates[signal]) for signal in data.columns 
@@ -97,12 +98,13 @@ def split_dataset(data, test_size=0.2):
     train_data = data[data['subject'].isin(train_subjects)]
     test_data = data[data['subject'].isin(test_subjects)]
 
-    x_train = train_data.drop(columns=['subject', 'label']).values
-    y_train = train_data['label'].values
-    x_test = test_data.drop(columns=['subject', 'label']).values
-    y_test = test_data['label'].values
+    return train_data, test_data
+    # x_train = train_data.drop(columns=['subject', 'label']).values
+    # y_train = train_data['label'].values
+    # x_test = test_data.drop(columns=['subject', 'label']).values
+    # y_test = test_data['label'].values
 
-    return (x_train, y_train), (x_test, y_test)
+    # return (x_train, y_train), (x_test, y_test)
 
 
 def get_wesad(data, dataset_type, binary_classification=False, three_class_classification=True):

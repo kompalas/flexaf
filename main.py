@@ -3,7 +3,7 @@ import traceback
 import logging
 from collections import OrderedDict
 from src.utils import env_cfg
-from src.selection.gate_fs import run_differentiable_feature_selection
+from src.selection.gate_fs import run_differentiable_feature_selection, run_gated_model_pruning_experiment
 from src.selection.heuristic_fs import run_heuristic_feature_selection
 from src.selection.greedy_fs import run_greedy_feature_selection
 from src.selection.statistical import run_statistical_feature_selection
@@ -19,7 +19,8 @@ def main():
     if args.execute_differentiable_feature_selection:
         args.name = f"gate_fs_{args.name}"
         logger.info("Running differentiable feature selection with ConcreteGate...")
-        run_differentiable_feature_selection(args)
+        # run_differentiable_feature_selection(args)
+        run_gated_model_pruning_experiment(args)
 
     elif args.execute_heuristic_feature_selection:
         args.name = f"heuristic_fs_{args.name}"

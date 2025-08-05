@@ -70,14 +70,30 @@ def write_neuron_module(logger_v, neuron_id, neuron_weights, bias,
 
         aligned_wire = f"aligned_{i}"
         logger_v.debug(f"    wire signed [{aligned_product_fxp.width-1}:0] {aligned_wire};")
+
         if extend_by > 0 and shift_by > 0:
-            logger_v.debug(f"    assign {aligned_wire} = $signed({{{{{extend_by}{{product_{i}[{product_fxp.width-1}]}}, product_{i}}}}}) <<< {shift_by};")
+            if extend_by == 1:
+                logger_v.debug(
+                    f"    assign {aligned_wire} = $signed({{product_{i}[{product_fxp.width-1}], product_{i}}}) <<< {shift_by};"
+                )
+            else:
+                logger_v.debug(
+                    f"    assign {aligned_wire} = $signed({{{{{extend_by}{{product_{i}[{product_fxp.width-1}]}}, product_{i}}}}}) <<< {shift_by};"
+                )
         elif extend_by > 0:
-            logger_v.debug(f"    assign {aligned_wire} = $signed({{{{{extend_by}{{product_{i}[{product_fxp.width-1}]}}, product_{i}}}}});")
+            if extend_by == 1:
+                logger_v.debug(
+                    f"    assign {aligned_wire} = $signed({{product_{i}[{product_fxp.width-1}], product_{i}}});"
+                )
+            else:
+                logger_v.debug(
+                    f"    assign {aligned_wire} = $signed({{{{{extend_by}{{product_{i}[{product_fxp.width-1}]}}, product_{i}}}}});"
+                )
         elif shift_by > 0:
             logger_v.debug(f"    assign {aligned_wire} = product_{i} <<< {shift_by};")
         else:
             logger_v.debug(f"    assign {aligned_wire} = product_{i};")
+
         sum_terms.append(aligned_wire)
 
     # Bias: shift to match the fractional bits, and sign-extend to match the aligned product width
@@ -130,6 +146,7 @@ def mlp_to_verilog(
     # Step 2: Define a common weight format for all weights
     max_weight = max(abs(w) for layer in mlp_model.coefs_ for row in layer for w in row)
     w_int = get_width(max_weight)
+    w_int = min(w_int, weight_width - 1)
     w_frac = weight_width - 1 - w_int
     wfxp_template = ConvFxp(1, w_int, w_frac)
 

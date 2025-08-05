@@ -62,7 +62,7 @@ def set_extra_clf_params(classifier_type, input_precisions=None, x_test=None, y_
         
         extra_params['input_bitwidth'] = max(input_precisions)
         extra_params['num_nodes'] = 100
-        extra_params['learning_rate'] = 0.01
+        extra_params['learning_rate'] = 0.001
         extra_params['feature_costs'] = feature_costs
         extra_params['lambda_reg'] = 0.0005
 

@@ -218,153 +218,120 @@ def run_differentiable_feature_selection(args):
 
 from src.custom_models.mlp.input_gate_layer import ConcreteGate
 from keras import layers, models
-from sklearn.model_selection import GroupKFold
 from keras.callbacks import EarlyStopping, Callback
-from src.selection import prepare_feature_data_cross_validation
-from src.features import create_features_from_df_subjectwise
-from src.utils import transform_categorical
 
 
-def run_gated_model_pruning_experiment(args):
-    """Run the gated model pruning experiment."""
+def run_gated_model_pruning_experiment(args):    
+    train_data, test_data, categ_labels, feature_costs, extra_params, input_precisions = prepare_feature_data(args)
+    x_train, y_train = train_data
+    x_test, y_test = test_data
+    y_train_categ, y_test_categ = categ_labels
+
     search_trials = 100
     training_epochs = 70
     thresholds = [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5]
-    num_models_to_keep = 5
 
-    # prepare data for cross-validation
-    cv_folds = int(1/args.test_size)
-    data, cv_subject_folds, feature_costs, features_dict, input_precisions, sampling_rates, dataset_sr, num_classes = \
-        prepare_feature_data_cross_validation(args, cv_folds)
+    num_features = extra_params['num_features']
+    num_classes = extra_params['num_classes']
 
-    for fold, (train_subjects, test_subjects) in enumerate(cv_subject_folds):
-        train_data = data[data['subject'].isin(train_subjects)]
-        test_data = data[data['subject'].isin(test_subjects)]
-        logger.info(f"Running fold {fold + 1}/{cv_folds} with subjects: "
-                    f"train={train_subjects.tolist()}, test={test_subjects.tolist()}")
+    from src.selection.statistical import fisher_select
+    features_to_use = fisher_select(x_train, y_train, k=num_features//2)  # select half of the features
+    fisher_score_mask = np.zeros(num_features, dtype=np.float32)
+    fisher_score_mask[features_to_use] = 1.0
 
-        x_train, y_train = create_features_from_df_subjectwise(
-            data=train_data,
-            features_dict=features_dict,
-            inputs_precisions=input_precisions,
-            sampling_rates=sampling_rates,
-            original_sampling_rate=dataset_sr,
-            window_size=args.default_window_size,
-            target_clock=args.performance_target
-        )
-        x_test, y_test = create_features_from_df_subjectwise(
-            data=test_data,
-            features_dict=features_dict,
-            inputs_precisions=input_precisions,
-            sampling_rates=sampling_rates,
-            original_sampling_rate=dataset_sr,
-            window_size=args.default_window_size,
-            target_clock=args.performance_target
-        )
-        y_train_categ = transform_categorical(y_train, num_classes)
-        y_test_categ = transform_categorical(y_test, num_classes)
-        num_features = x_train.shape[1]
-        x_train = x_train.values.astype(np.float32)
-        x_test = x_test.values.astype(np.float32)
+    def build_with_gates(hp):
+        learning_rate = hp.Float('learning_rate', 1e-3, 1e-1, sampling='log')
+        lambda_reg = hp.Float('lambda_reg', 1e-12, 1e-9, sampling='log')
+        temperature = hp.Float('temperature', 1, 50, sampling='linear')
 
-        # from src.selection.statistical import fisher_select
-        # features_to_use = fisher_select(x_train, y_train, k=num_features//2)  # select half of the features
-        # fisher_score_mask = np.zeros(num_features, dtype=np.float32)
-        # fisher_score_mask[features_to_use] = 1.0
+        # learning_rate = 0.02
+        # lambda_reg = 1e-10
+        # temperature = 0.5
+        warmup_epochs = 10
+        mask = None  # fisher_score_mask
+        neurons = [100]
 
-        def build_with_gates(hp):
-            learning_rate = hp.Float('learning_rate', 1e-3, 1e-1, sampling='log')
-            lambda_reg = hp.Float('lambda_reg', 1e-12, 1e-9, sampling='log')
-            temperature = hp.Float('temperature', 1, 50, sampling='linear')
+        inputs = layers.Input(shape=(num_features,), name='input')
+        gates = ConcreteGate(num_features,
+                             feature_costs=feature_costs,
+                             lambda_reg=lambda_reg,
+                             temperature=temperature, 
+                             warmup_epochs=warmup_epochs,
+                             initial_binary_mask=mask,
+                             name='input_gate_layer')(inputs)
 
-            # learning_rate = 0.02
-            # lambda_reg = 1e-10
-            # temperature = 0.5
-            warmup_epochs = 10
-            mask = None  # fisher_score_mask
-            neurons = [100]
+        x = gates
+        for i, units in enumerate(neurons):
+            x = layers.Dense(units, activation='relu', name=f"hidden_dense_{i}")(x)
 
-            inputs = layers.Input(shape=(num_features,), name='input')
-            gates = ConcreteGate(num_features,
-                                feature_costs=feature_costs,
-                                lambda_reg=lambda_reg,
-                                temperature=temperature, 
-                                warmup_epochs=warmup_epochs,
-                                initial_binary_mask=mask,
-                                name='input_gate_layer')(inputs)
+        outputs = layers.Dense(num_classes, activation='softmax')(x)
+        model = models.Model(inputs=inputs, outputs=outputs)
+        model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
+                      loss='categorical_crossentropy',
+                      metrics=['accuracy'])
+        return model
 
-            x = gates
-            for i, units in enumerate(neurons):
-                x = layers.Dense(units, activation='relu', name=f"hidden_dense_{i}")(x)
+    class GateEpochUpdater(Callback):
+        def on_epoch_end(self, epoch, logs=None):
+            for layer in self.model.layers:
+                if hasattr(layer, 'on_epoch_end'):
+                    layer.on_epoch_end()
 
-            outputs = layers.Dense(num_classes, activation='softmax')(x)
-            model = models.Model(inputs=inputs, outputs=outputs)
-            model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
-                        loss='categorical_crossentropy',
-                        metrics=['accuracy'])
-            return model
+    tuner = kt.BayesianOptimization(
+        hypermodel=build_with_gates,
+        objective="val_accuracy",
+        max_trials=search_trials,
+        project_name=f"{args.resdir}/tuning_with_gates",
+        overwrite=True
+    )
+    tuner.search(x_train, y_train_categ,
+                 epochs=training_epochs,
+                 validation_data=(x_test, y_test_categ),
+                 callbacks=[
+                     GateEpochUpdater(),
+                     EarlyStopping(monitor='val_accuracy', patience=10, restore_best_weights=True)
+                 ],
+                 verbose=1)
 
-        class GateEpochUpdater(Callback):
-            def on_epoch_end(self, epoch, logs=None):
-                for layer in self.model.layers:
-                    if hasattr(layer, 'on_epoch_end'):
-                        layer.on_epoch_end()
+    best_hp = tuner.get_best_hyperparameters()[0]
+    logger.info(f"Best hyperparameters: {best_hp.values}")
 
-        tuner = kt.BayesianOptimization(
-            hypermodel=build_with_gates,
-            objective="val_accuracy",
-            max_trials=search_trials,
-            project_name=f"{args.resdir}/tuning_with_gates",
-            overwrite=True
-        )
-        tuner.search(x_train, y_train_categ,
-                    epochs=training_epochs,
-                    validation_data=(x_test, y_test_categ),
-                    callbacks=[
-                        GateEpochUpdater(),
-                        EarlyStopping(monitor='val_accuracy', patience=10, restore_best_weights=True)
-                    ],
-                    verbose=1)
+    gate_models = tuner.get_best_models(num_models=5)
+    for i, model in enumerate(gate_models):
+        logger.info(f"Model {i} summary:")
+        logger.info(f"{model.summary()}")
 
-        best_hp = tuner.get_best_hyperparameters()[0]
-        logger.info(f"Best hyperparameters: {best_hp.values}")
+        test_loss, test_accuracy = model.evaluate(x_test, y_test_categ, verbose=0)
+        logger.info(f"Test accuracy from tuned model number {i}: {test_accuracy:.4f}")
 
-        gate_models = tuner.get_best_models(num_models=num_models_to_keep)
-        for i, model in enumerate(gate_models):
-            logger.info(f"Model {i} summary:")
-            logger.info(f"{model.summary()}")
+        gate_layer = next(l for l in model.layers if hasattr(l, 'get_gate_values'))
+        gate_values = gate_layer.get_gate_values()
+        neurons_used = [l.units for l in model.layers if hasattr(l, 'units') and 'hidden_dense' in l.name]
+        logger.info(f"Gate values: {gate_values}")
+        logger.info(f"Neurons used: {neurons_used}")
 
-            test_loss, test_accuracy = model.evaluate(x_test, y_test_categ, verbose=0)
-            logger.info(f"Test accuracy from tuned model number {i}: {test_accuracy:.4f}")
+        for thresh in thresholds:
+            selected = np.where(gate_values > thresh)[0]
+            if len(selected) == 0:
+                continue
 
-            gate_layer = next(l for l in model.layers if hasattr(l, 'get_gate_values'))
-            gate_values = gate_layer.get_gate_values()
-            neurons_used = [l.units for l in model.layers if hasattr(l, 'units') and 'hidden_dense' in l.name]
-            logger.info(f"Gate values: {gate_values}")
-            logger.info(f"Neurons used: {neurons_used}")
+            x_train_sub = x_train[:, selected]
+            x_test_sub = x_test[:, selected]
+            cost_sub = feature_costs[selected]
 
-            for thresh in thresholds:
-                selected = np.where(gate_values > thresh)[0]
-                if len(selected) == 0:
-                    continue
+            clf = FCNNKerasWrapper(
+                accuracy_metric=AccuracyMetric.Accuracy,
+                tune=False,
+                feature_costs=cost_sub,
+                lambda_reg=None,
+                num_nodes=neurons_used,
+                learning_rate=0.001,
+                num_features=len(selected),
+                num_classes=num_classes,
+                test_data=(x_test_sub, y_test)
+            )
+            acc = clf.train(x_train_sub, y_train, x_test_sub, y_test)
 
-                x_train_sub = x_train[:, selected]
-                x_test_sub = x_test[:, selected]
-                cost_sub = feature_costs[selected]
-
-                clf = FCNNKerasWrapper(
-                    accuracy_metric=AccuracyMetric.Accuracy,
-                    tune=False,
-                    feature_costs=cost_sub,
-                    lambda_reg=None,
-                    num_nodes=neurons_used,
-                    learning_rate=0.001,
-                    num_features=len(selected),
-                    num_classes=num_classes,
-                    test_data=(x_test_sub, y_test)
-                )
-                acc = clf.train(x_train_sub, y_train, x_test_sub, y_test)
-
-                logger.info(f"[PRUNED] Threshold: {thresh:.3f} | Features: {len(selected)} | "
-                        f"Cost: {np.sum(cost_sub):.2f} | Accuracy: {acc:.4f} | "
-                        f"Neurons: {neurons_used}")
+            logger.info(f"[PRUNED] Threshold: {thresh:.3f} | Features: {len(selected)} | "
+                    f"Cost: {np.sum(cost_sub):.2f} | Accuracy: {acc:.4f} | "
+                    f"Neurons: {neurons_used}")

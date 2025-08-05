@@ -5,7 +5,7 @@ import numpy as np
 from skfeature.function.information_theoretical_based import JMI, DISR
 from skfeature.function.similarity_based import fisher_score
 from sklearn.feature_selection import f_classif
-from src.selection import prepare_feature_data
+from src.selection import prepare_feature_data, feature_costs_map
 from src.args import classifier_type_arg, AccuracyMetric, ClassifierType
 from src.classifier import set_extra_clf_params, get_classifier
 from src.hw_templates.utils import classifier_hw_evaluation
@@ -85,7 +85,7 @@ def quantize_classifier(classifier, input_precision, weight_precisions, test_dat
             cleanup=True,
             rescale_inputs=not all_inputs_integer,
             prefix=experiment_name,
-            only_rtl=False
+            only_rtl=True
         )
         logger.info(f"Quantization accuracy: {sim_accuracy}")
         logger.info(f"Synthesis results: {hw_results._asdict()}")
@@ -93,7 +93,7 @@ def quantize_classifier(classifier, input_precision, weight_precisions, test_dat
         results.append(hw_results._asdict() | {
             'input_precision': input_precision,
             'weight_precision': precision,
-            'sim_accuracy': sim_accuracy,
+            'accuracy': sim_accuracy,
         })
     return results
 
@@ -127,6 +127,9 @@ def run_statistical_feature_selection(args):
 
             # perform feature selection
             selected_features = selector(x_train, y_train, k=num_features)
+            total_cost = np.sum(feature_costs[selected_features])
+            logger.info(f"Selected {num_features} features with total cost {total_cost}")
+
             x_train_sub = x_train[:, selected_features]
             x_test_sub = x_test[:, selected_features]
 
@@ -150,12 +153,14 @@ def run_statistical_feature_selection(args):
                 else:
                     results = quantize_classifier(clf, input_precision, weight_precisions, (x_test_sub, y_test), hw_eval_dir, prefix=f'{num_features}{fs_name}_{clf_name}')
                     results = [r | {'sparsity': 0} for r in results]
-                        
+
                 results = [r | {
                     'feature_selector': fs_name,
                     'num_features': num_features,
                     'classifier': clf_name,
-                    'fp_accuracy': fp_accuracy
+                    'fp_accuracy': fp_accuracy,
+                    'cost': total_cost,
+                    'selected_features': selected_features
                 } for r in results]
                 all_results.extend(results)
 

@@ -133,6 +133,90 @@ def create_features_from_array(data, labels, features_dict, inputs_precisions, s
     return features_data, saved_labels if saved_labels is not None else filtered_labels
 
 
+def create_features_from_df_subjectwise(data, features_dict, inputs_precisions, 
+                                        sampling_rates=[], original_sampling_rate=64, 
+                                        window_size=1, target_clock=1, **kwargs):
+    """Create the dataset with the selected features, processing each subject independently with sliding windows."""
+    all_features = []
+    all_labels = []
+
+    for subject_id in data['subject'].unique():
+        subject_data = data[data['subject'] == subject_id]
+        subject_feature_data = pd.DataFrame()
+        subject_labels = None
+        expected_length = None  # Will track shortest length across sensors
+
+        for sensor_id, sensor_features in features_dict.items():
+            sensor_type = subject_data.columns[sensor_id]  # assumes that 'label' and 'subject' are at the end
+            precision = inputs_precisions[sensor_id]
+            sampling_rate = sampling_rates[sensor_id]
+
+            fxp_data = convert_to_fixed_point(subject_data[sensor_type], precision,
+                                              normalize=None, rescale=True, signed=False,
+                                              fractional_bits=precision)
+            resampled_data = resample(fxp_data, original_sampling_rate, sampling_rate)
+            resampled_labels = resample(subject_data['label'], original_sampling_rate, sampling_rate)
+
+            window_shape = window_size * sampling_rate
+            step = target_clock * sampling_rate
+
+            if len(resampled_data) < window_shape:
+                continue  # Skip short sequences
+
+            reshaped_data = np.lib.stride_tricks.sliding_window_view(
+                resampled_data, window_shape=window_shape
+            )[::step]
+
+            reshaped_labels = np.lib.stride_tricks.sliding_window_view(
+                resampled_labels, window_shape=window_shape
+            )[::step]
+
+            for feature in sensor_features:
+                # Extract feature
+                this_feature_data = extract_feature(reshaped_data, feature, **kwargs)
+                this_feature_data = convert_to_fixed_point(this_feature_data, precision,
+                                                           normalize='0->1', rescale=True, signed=False,
+                                                           fractional_bits=precision)
+                
+                # Extract labels: majority label in each window
+                labels = stats.mode(reshaped_labels, axis=1)[0].flatten()
+
+                # Determine minimum valid length across sensors
+                if expected_length is None:
+                    expected_length = this_feature_data.shape[0]
+                else:
+                    expected_length = min(expected_length, this_feature_data.shape[0], labels.shape[0])
+
+                # Truncate to match expected length
+                this_feature_data = this_feature_data[:expected_length]
+                labels = labels[:expected_length]
+
+                # Create DataFrame for this feature
+                this_feature_df = pd.DataFrame(this_feature_data, columns=[f"{sensor_type}_{feature}"])
+                if subject_feature_data.shape[0] == 0:
+                    subject_feature_data = this_feature_df
+                else:
+                    subject_feature_data = pd.concat([subject_feature_data.iloc[:expected_length],
+                                                      this_feature_df], axis=1)
+
+                # Store labels once (truncated to match)
+                if subject_labels is None:
+                    subject_labels = labels
+                else:
+                    subject_labels = subject_labels[:expected_length]
+
+        # Append if this subject produced any valid windows
+        if subject_feature_data.shape[0] > 0:
+            all_features.append(subject_feature_data)
+            all_labels.append(subject_labels)
+
+    # Final concatenation
+    features_data = pd.concat(all_features, ignore_index=True)
+    labels = np.concatenate(all_labels)
+
+    return features_data, labels
+
+
 ### Feature extraction functions
 
 def extract_feature(data, feature, simplified=False):
