@@ -11,6 +11,32 @@ from src.args import AccuracyMetric
 logger = logging.getLogger(__name__)
 
 
+def select_specific_features(data, dataset_type, selected_features):
+    # Change these to get the correct features
+    subjects_to_keep = ['S15', 'S4', 'S9']
+    features_to_keep = [1, 16, 17, 20, 25, 32, 41, 45]
+
+    # Filter the data to keep only the specified subjects and save to csv
+    pruned_data = data[data['subject'].isin(subjects_to_keep)]
+    pruned_data.to_csv(f'{dataset_type.name.lower()}_32hz_pruned.csv', index=False)
+
+    # Create a features dictionary based on the specified features to keep
+    num_sensors = len(pruned_data.columns) - 2
+    features_dict = OrderedDict([
+        (sensor_id, selected_features)
+        for sensor_id in range(0, num_sensors)
+    ])
+    all_feature_names = [
+        f"{sensor_id}_{feature}"
+        for sensor_id, features in features_dict.items()
+        for feature in features
+    ]
+    features_names_to_keep = np.array(all_feature_names)[features_to_keep]
+    for feature in features_names_to_keep:
+        sensor, feature_name = feature.split('_')
+        logger.info(f"Sensor {sensor} ({pruned_data.columns[sensor]}): {feature_name}")
+
+
 def perform_basic_evaluation(args):
     """Perform a simple evaluation of the dataset with basic features
     """
@@ -24,21 +50,11 @@ def perform_basic_evaluation(args):
         test_size=args.test_size,
         # test_size=None,
     )
+    # select_specific_features(data, args.dataset_type, selected_features)
     # data.to_csv(f'{args.dataset_type.name.lower()}_32hz.csv', index=False)
 
-    # Uncomment the following lines if you want to use a specific train/test split
     train_data, test_data = data
     num_sensors = len(train_data.columns) - 2  # Exclude 'label' and 'subject'
-
-    # from sklearn.model_selection import train_test_split
-    # num_sensors = len(data.columns) - 2
-    # values = data.drop(columns=['label', 'subject']).values
-    # labels = data['label'].values
-    # x_train, x_test, y_train, y_test = train_test_split(values, labels,
-    #                                                     test_size=args.test_size,
-    #                                                     stratify=labels,
-    #                                                     random_state=args.global_seed)
-
 
     features_dict = OrderedDict([
         (sensor_id, selected_features)

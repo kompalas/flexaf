@@ -1,242 +1,48 @@
-import os
-import logging
 import numpy as np
-import pandas as pd
-import keras
 import keras_tuner as kt
 import tensorflow as tf
-from functools import partial
-from src.args import AccuracyMetric
-from src.classifier import FCNNKerasWrapper
-from src.selection import prepare_feature_data
-
-logger = logging.getLogger(__name__)
-
-
-def train_baseline_model(x_train, y_train, x_test, y_test, num_nodes, learning_rate, **extra_params):
-    classifier = FCNNKerasWrapper(
-        accuracy_metric=AccuracyMetric.Accuracy,
-        tune=False,
-        num_nodes=num_nodes,
-        learning_rate=learning_rate,
-        **extra_params
-    )
-    acc = classifier.train(x_train, y_train, x_test, y_test)
-    return acc, classifier
-
-
-def builder_hp(hp, hidden_layers, hidden_neurons, input_gates,
-               num_classes, input_bitwidth, num_features, feature_costs):
-    from src.classifier import FCNNKerasWrapper  # avoid circular import
-
-    learning_rate = hp.Float('learning_rate', 1e-4, 1e-1, sampling='log')
-    
-    if input_gates:
-        lambda_reg = hp.Float('lambda_reg', 0.01, 10.0, sampling='log')
-        temperature = hp.Float('temperature', 0.01, 1.0, sampling='log')
-        warmup_epochs = 40
-        neurons_per_layer = hidden_neurons
-    else:
-        lambda_reg = temperature = warmup_epochs = None
-        num_layers = hp.Choice('num_layers', hidden_layers)
-        neurons_per_layer = [hp.Choice(f'neurons_l{i+1}', hidden_neurons) for i in range(num_layers)]
-
-    return FCNNKerasWrapper.define_model(
-        num_classes=num_classes,
-        input_bitwidth=input_bitwidth,
-        num_features=num_features,
-        num_nodes=neurons_per_layer,
-        learning_rate=learning_rate,
-        feature_costs=feature_costs,
-        lambda_reg=lambda_reg,
-        temperature=temperature,
-        warmup_epochs=warmup_epochs
-    )
-
-
-def run_tuning(builder, x_train, y_train, x_test, y_test, training_epochs, max_trials, callbacks, project_name):
-    tuner = kt.BayesianOptimization(
-        hypermodel=builder,
-        objective="val_accuracy",
-        max_trials=max_trials,
-        project_name=project_name,
-        overwrite=True,
-    )
-    tuner.search(x_train, y_train,
-                 epochs=training_epochs,
-                 validation_data=(x_test, y_test),
-                 verbose=1,
-                 callbacks=callbacks)
-    return tuner
-
-
-def prune_and_evaluate(models, thresholds, x_train, x_test, y_train, y_test, feature_costs, extra_params):
-    results = []
-    for i, model in enumerate(models):
-        gate_layer = [l for l in model.layers if hasattr(l, 'get_gate_values')][0]
-        gate_values = gate_layer.get_gate_values()
-        
-        neurons_used = [l.units for l in model.layers if 'hidden_dense' in l.name]
-
-        for thresh in thresholds:
-            selected = np.where(gate_values > thresh)[0]
-            if len(selected) == 0:
-                continue
-            x_train_sub = x_train[:, selected]
-            x_test_sub = x_test[:, selected]
-            cost_sub = feature_costs[selected]
-
-            clf = FCNNKerasWrapper(
-                accuracy_metric=AccuracyMetric.Accuracy,
-                tune=False,
-                feature_costs=cost_sub,
-                lambda_reg=None,
-                num_nodes=neurons_used,
-                learning_rate=0.001,
-                num_features=len(selected),
-                num_classes=extra_params['num_classes'],
-                test_data=(x_test_sub, y_test)
-            )
-            acc = clf.train(x_train_sub, y_train, x_test_sub, y_test)
-            results.append({
-                'method': 'gates',
-                'model_id': id(model),
-                'model_index': i,
-                'gate_threshold': thresh,
-                'accuracy': acc,
-                'cost': np.sum(cost_sub),
-                'num_features': len(selected),
-                'selected_features': selected.tolist(),
-                'neurons': '-'.join(map(str, neurons_used))
-            })
-    return results
-
-
-def log_and_save_results(info, resdir):
-    df = pd.DataFrame(info)
-    out_path = os.path.join(resdir, 'results.csv')
-    df.to_csv(out_path, index=False)
-    logger.info(f"Results saved to {out_path}")
-
-
-def run_differentiable_feature_selection(args):
-    """Run the differentiable feature selection experiment with ConcreteGate."""
-    assert args.classifier_type.name.lower() == 'fcnn', \
-        "Differentiable feature selection is only supported with FCNN classifier type."
-
-    train_data, test_data, categ_labels, feature_costs, extra_params, input_precisions = prepare_feature_data(args)
-    x_train, y_train = train_data
-    x_test, y_test = test_data
-    y_train_categ, y_test_categ = categ_labels
-
-    # -------------------- CONTROLLED HYPERPARAMETERS --------------------
-    hidden_layers = [1, 2, 3]
-    hidden_neurons = [10, 20, 50, 100]
-    training_epochs = 50
-    search_trials = 100
-    initial_learning_rate = 0.001
-    num_nodes = [50]  # initial, for baseline model
-    thresholds = [0.01, 0.05, 0.1, 0.2]
-    # -------------------------------------------------------------------
-
-    acc, clf = train_baseline_model(x_train, y_train, x_test, y_test, num_nodes, initial_learning_rate, **extra_params)
-    base_result = [{
-        'method': 'no_gates',
-        'model_id': id(clf),
-        'model_index': 0,
-        'gate_threshold': None,
-        'accuracy': acc,
-        'cost': np.sum(feature_costs),
-        'num_features': extra_params['num_features'],
-        'selected_features': list(range(extra_params['num_features'])),
-        'neurons': '-'.join(map(str, num_nodes))
-    }]
-    log_and_save_results(base_result, args.resdir)
-    # -------------------------------------------------------------------
-
-    builder_no_gates = partial(builder_hp, 
-                               hidden_layers=hidden_layers,
-                               hidden_neurons=hidden_neurons, 
-                               input_gates=False,
-                               num_classes=extra_params['num_classes'],
-                               input_bitwidth=args.default_inputs_precision,
-                               num_features=extra_params['num_features'],
-                               feature_costs=feature_costs)
-
-    early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
-    tuner = run_tuning(builder_no_gates, x_train, y_train_categ, x_test, y_test_categ,
-                       training_epochs, search_trials, [early_stop],
-                       project_name=f"{args.resdir}/tuning_no_gates")
-
-    best_model = tuner.get_best_models(num_models=1)[0]
-    acc = best_model.evaluate(x_test, y_test_categ, verbose=0)[1]
-    hp = tuner.get_best_hyperparameters()[0]
-    neurons = [hp.get(f'neurons_l{i+1}') for i in range(hp.get('num_layers'))]
-
-    tuned_result = [{
-        'method': 'no_gates_tuned',
-        'model_id': id(best_model),
-        'model_index': 0,
-        'gate_threshold': None,
-        'accuracy': acc,
-        'cost': np.sum(feature_costs),
-        'num_features': extra_params['num_features'],
-        'selected_features': list(range(extra_params['num_features'])),
-        'neurons': '-'.join(map(str, neurons))
-    }]
-    log_and_save_results(base_result + tuned_result, args.resdir)
-    # -------------------------------------------------------------------
-
-    builder_with_gates = partial(builder_hp, hidden_layers=len(neurons),
-                                 hidden_neurons=neurons, input_gates=True,
-                                 num_classes=extra_params['num_classes'],
-                                 input_bitwidth=args.default_inputs_precision,
-                                 num_features=extra_params['num_features'],
-                                 feature_costs=feature_costs)
-
-    class GateEpochUpdater(tf.keras.callbacks.Callback):
-        def on_epoch_end(self, epoch, logs=None):
-            for layer in self.model.layers:
-                if hasattr(layer, 'on_epoch_end'):
-                    layer.on_epoch_end()
-
-    tuner_gates = run_tuning(builder_with_gates, x_train, y_train_categ, x_test, y_test_categ,
-                             training_epochs, search_trials, [GateEpochUpdater(), early_stop],
-                             project_name=f"{args.resdir}/tuning_with_gates")
-
-    gate_models = tuner_gates.get_best_models(num_models=search_trials)
-    pruned_info = prune_and_evaluate(gate_models, thresholds,
-                                     x_train, x_test,
-                                     y_train, y_test, 
-                                     feature_costs, extra_params)
-
-    log_and_save_results(base_result + tuned_result + pruned_info, args.resdir)
-
-
-
-
-
-from src.custom_models.mlp.input_gate_layer import ConcreteGate
+import logging
+import os
+import pandas as pd
 from keras import layers, models
-from sklearn.model_selection import GroupKFold
 from keras.callbacks import EarlyStopping, Callback
 from src.selection import prepare_feature_data_cross_validation
 from src.features import create_features_from_df_subjectwise
 from src.utils import transform_categorical
+from src.classifier import FCNNKerasWrapper
+from src.args import AccuracyMetric
+from src.custom_models.mlp.input_gate_layer import ConcreteGate
+
+
+logger = logging.getLogger(__name__)
 
 
 def run_gated_model_pruning_experiment(args):
     """Run the gated model pruning experiment."""
-    search_trials = 100
-    training_epochs = 70
-    thresholds = [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5]
-    num_models_to_keep = 5
+    search_trials = 30
+    training_epochs = 50
+    thresholds = [0.01, 0.05, 0.1, 0.2, 0.5]
+    num_models_to_keep = min(5, search_trials)
+
+    # confirm that TensorFlow runs on a single GPU
+    # os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Only GPU 0 will be used
+    # gpus = tf.config.list_physical_devices('GPU')
+    # logger.info("GPUs available:", gpus)
+
+    # create directory for saving results
+    results_dir = os.path.join(args.resdir, 'results')
+    os.makedirs(results_dir, exist_ok=True)
+    results_data_dir = os.path.join(results_dir, 'data')
+    os.makedirs(results_data_dir, exist_ok=True)
+    results_clf_dir = os.path.join(results_dir, 'classifiers')
+    os.makedirs(results_clf_dir, exist_ok=True)
 
     # prepare data for cross-validation
     cv_folds = int(1/args.test_size)
     data, cv_subject_folds, feature_costs, features_dict, input_precisions, sampling_rates, dataset_sr, num_classes = \
         prepare_feature_data_cross_validation(args, cv_folds)
-
+    
+    results = []
     for fold, (train_subjects, test_subjects) in enumerate(cv_subject_folds):
         train_data = data[data['subject'].isin(train_subjects)]
         test_data = data[data['subject'].isin(test_subjects)]
@@ -267,20 +73,26 @@ def run_gated_model_pruning_experiment(args):
         x_train = x_train.values.astype(np.float32)
         x_test = x_test.values.astype(np.float32)
 
+        # save the training and test data
+        np.save(os.path.join(results_data_dir, f"x_train_fold{fold}.npy"), x_train)
+        np.save(os.path.join(results_data_dir, f"y_train_fold{fold}.npy"), y_train)
+        np.save(os.path.join(results_data_dir, f"x_test_fold{fold}.npy"), x_test)
+        np.save(os.path.join(results_data_dir, f"y_test_fold{fold}.npy"), y_test)
+
         # from src.selection.statistical import fisher_select
         # features_to_use = fisher_select(x_train, y_train, k=num_features//2)  # select half of the features
         # fisher_score_mask = np.zeros(num_features, dtype=np.float32)
         # fisher_score_mask[features_to_use] = 1.0
 
         def build_with_gates(hp):
-            learning_rate = hp.Float('learning_rate', 1e-3, 1e-1, sampling='log')
-            lambda_reg = hp.Float('lambda_reg', 1e-12, 1e-9, sampling='log')
-            temperature = hp.Float('temperature', 1, 50, sampling='linear')
+            learning_rate = hp.Float('learning_rate', 1e-3, 5e-2, sampling='log')
+            lambda_reg = hp.Float('lambda_reg', 1e-9, 1e-4, sampling='log')
+            temperature = hp.Float('temperature', 1, 100, sampling='log')
 
             # learning_rate = 0.02
             # lambda_reg = 1e-10
             # temperature = 0.5
-            warmup_epochs = 10
+            warmup_epochs = 5
             mask = None  # fisher_score_mask
             neurons = [100]
 
@@ -322,35 +134,54 @@ def run_gated_model_pruning_experiment(args):
                     validation_data=(x_test, y_test_categ),
                     callbacks=[
                         GateEpochUpdater(),
-                        EarlyStopping(monitor='val_accuracy', patience=10, restore_best_weights=True)
+                        EarlyStopping(monitor='val_accuracy', mode='max', min_delta=0.005, patience=20, restore_best_weights=True)
                     ],
                     verbose=1)
 
-        best_hp = tuner.get_best_hyperparameters()[0]
-        logger.info(f"Best hyperparameters: {best_hp.values}")
-
         gate_models = tuner.get_best_models(num_models=num_models_to_keep)
+        hyperparameters = tuner.get_best_hyperparameters(num_trials=num_models_to_keep)
+
         for i, model in enumerate(gate_models):
             logger.info(f"Model {i} summary:")
             logger.info(f"{model.summary()}")
+            logger.info(f"Hyperparameters for model {i}: {hyperparameters[i].values}")
 
             test_loss, test_accuracy = model.evaluate(x_test, y_test_categ, verbose=0)
             logger.info(f"Test accuracy from tuned model number {i}: {test_accuracy:.4f}")
 
+            learning_rate = hyperparameters[i].values.get('learning_rate', 0.002)
             gate_layer = next(l for l in model.layers if hasattr(l, 'get_gate_values'))
             gate_values = gate_layer.get_gate_values()
             neurons_used = [l.units for l in model.layers if hasattr(l, 'units') and 'hidden_dense' in l.name]
-            logger.info(f"Gate values: {gate_values}")
-            logger.info(f"Neurons used: {neurons_used}")
+            logger.info(f"Gate values for model {i}: {gate_values}")
+            logger.info(f"Neurons used for model {i}: {neurons_used}")
+
+            # save unpruned results to csv file
+            selected_features = np.arange(num_features)  # essentially all features
+            results.append({
+                'fold': fold,
+                'trial': i,
+                'accuracy': test_accuracy,
+                **hyperparameters[i].values,
+                'threshold': 0.0,
+                'features': selected_features.tolist(),
+                'cost': np.sum(feature_costs[selected_features]),
+            })
+            df = pd.DataFrame(results)
+            df.to_csv(os.path.join(results_dir, 'gated_model_results.csv'), index=False)
+
+            # save the model without pruning
+            model_name = f"gate_model_fold{fold}_unpruned_trial{i}.keras"
+            model.save(os.path.join(results_clf_dir, model_name))
 
             for thresh in thresholds:
-                selected = np.where(gate_values > thresh)[0]
-                if len(selected) == 0:
+                selected_features = np.where(gate_values > thresh)[0]
+                if len(selected_features) == 0:
                     continue
 
-                x_train_sub = x_train[:, selected]
-                x_test_sub = x_test[:, selected]
-                cost_sub = feature_costs[selected]
+                x_train_sub = x_train[:, selected_features]
+                x_test_sub = x_test[:, selected_features]
+                cost_sub = feature_costs[selected_features]
 
                 clf = FCNNKerasWrapper(
                     accuracy_metric=AccuracyMetric.Accuracy,
@@ -358,13 +189,49 @@ def run_gated_model_pruning_experiment(args):
                     feature_costs=cost_sub,
                     lambda_reg=None,
                     num_nodes=neurons_used,
-                    learning_rate=0.001,
-                    num_features=len(selected),
+                    learning_rate=learning_rate,
+                    num_features=len(selected_features),
                     num_classes=num_classes,
                     test_data=(x_test_sub, y_test)
                 )
                 acc = clf.train(x_train_sub, y_train, x_test_sub, y_test)
 
-                logger.info(f"[PRUNED] Threshold: {thresh:.3f} | Features: {len(selected)} | "
+                logger.info(f"[PRUNED] Threshold: {thresh:.3f} | Features: {len(selected_features)} | "
                         f"Cost: {np.sum(cost_sub):.2f} | Accuracy: {acc:.4f} | "
                         f"Neurons: {neurons_used}")
+
+                # save results to csv file
+                results.append({
+                    'fold': fold,
+                    'trial': i,
+                    'accuracy': acc,
+                    **hyperparameters[i].values,
+                    'threshold': thresh,
+                    'features': selected_features.tolist(),
+                    'cost': np.sum(cost_sub),
+                })
+                df = pd.DataFrame(results)
+                df.to_csv(os.path.join(results_dir, 'gated_model_results.csv'), index=False)
+
+                # Save the model pruned model and its train/test data
+                pruned_model_name = f"gate_model_fold{fold}_pruned_{thresh:.3f}_trial{i}.keras"
+                clf._clf.save(os.path.join(results_clf_dir, pruned_model_name))
+                np.save(os.path.join(results_data_dir, f"x_train_fold{fold}_pruned_{thresh:.3f}_trial{i}.npy"), x_train_sub)
+                np.save(os.path.join(results_data_dir, f"y_train_fold{fold}_pruned_{thresh:.3f}_trial{i}.npy"), y_train)
+                np.save(os.path.join(results_data_dir, f"x_test_fold{fold}_pruned_{thresh:.3f}_trial{i}.npy"), x_test_sub)
+                np.save(os.path.join(results_data_dir, f"y_test_fold{fold}_pruned_{thresh:.3f}_trial{i}.npy"), y_test)
+
+
+if __name__ == "__main__":
+
+    model_path = '/home/balaskas/flexaf/logs/diff_fs_fcnn_wesad___2025.08.06-14.56.18.357/results/classifiers/gate_model_fold0_pruned_0.500_trial0.keras'
+
+    model = tf.keras.models.load_model(
+        model_path,
+        custom_objects={
+            'ConcreteGate': ConcreteGate
+        }
+    )
+    model.summary()
+    gate_values = model.get_layer('input_gate_layer').get_gate_values()
+    print(f"Gate values: {gate_values}")

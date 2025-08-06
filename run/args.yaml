@@ -1,16 +1,16 @@
 generic_args:
-  name: diff_fs_fcnn
+  name: sota_mlp
   verbose: False
   deterministic: True
   global_seed: 123
 
 app_args:
-  dataset_type: affectiveroad  # wesad_merged, wesad_rb, wesad_e4, stressinnurses, spd, affectiveroad, drivedb, har, wisdm, harth
-  dataset_file: data/affective_road.csv
+  dataset_type: wesad_merged  # wesad_merged, wesad_rb, wesad_e4, stressinnurses, spd, affectiveroad, drivedb, har, wisdm, harth
+  dataset_file: data/wesad_merged.csv
   uniform_resampling_rate: 32  # in Hz, None for no resampling
   binary_classification: False
   three_class_classification: True
-  classifier_type: fcnn  # decisiontree, mlp, svm, bnn, tnn, fcnn
+  classifier_type: mlp  # decisiontree, mlp, svm, bnn, tnn, fcnn
   tune_classifier: False
   test_size: 0.2
   default_window_size: 1  # in seconds
@@ -18,7 +18,7 @@ app_args:
   performance_target: 1  # in seconds per prediction
 
 selection_args:
-  execute_differentiable_feature_selection: True
+  execute_differentiable_feature_selection: False
   execute_heuristic_feature_selection: False
   execute_greedy_feature_selection: False
-  execute_statistical_feature_selection: False
+  execute_statistical_feature_selection: True

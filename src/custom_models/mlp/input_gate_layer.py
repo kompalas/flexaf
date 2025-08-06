@@ -98,3 +98,24 @@ class ConcreteGate(tf.keras.layers.Layer):
 
     def get_gate_values(self):
         return tf.sigmoid(self.log_alpha).numpy()
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "num_features": self.num_features,
+            "feature_costs": self.feature_costs.numpy().tolist(),
+            "lambda_reg": self.lambda_reg,
+            "temperature": self.temperature,
+            "warmup_epochs": self.warmup_epochs,
+            "init_mean": self.init_mean,
+            "init_std": self.init_std,
+            "initial_binary_mask": self.binary_mask,
+            "epsilon": self.epsilon
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        # Convert list back to tensor
+        config["feature_costs"] = tf.constant(config["feature_costs"], dtype=tf.float32)
+        return cls(**config)

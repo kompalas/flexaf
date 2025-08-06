@@ -56,6 +56,6 @@ tech_lib/
 **/work_gate_lib/
 **/synopsys_sim.setup
 
-saved_logs/sota/drivedb/backup.sota_mlp___2025.05.21-14.48.06.310/
-saved_logs/**/populations/
-!saved_logs/**/pareto_*.log
+
+saved_logs/**/data/
+saved_logs/**/classifiers/

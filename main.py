@@ -3,7 +3,7 @@ import traceback
 import logging
 from collections import OrderedDict
 from src.utils import env_cfg
-from src.selection.gate_fs import run_differentiable_feature_selection, run_gated_model_pruning_experiment
+from src.selection.gate_fs import run_gated_model_pruning_experiment
 from src.selection.heuristic_fs import run_heuristic_feature_selection
 from src.selection.greedy_fs import run_greedy_feature_selection
 from src.selection.statistical import run_statistical_feature_selection

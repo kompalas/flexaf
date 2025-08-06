@@ -10,8 +10,16 @@ from src.features import create_features_from_df_subjectwise
 
 logger = logging.getLogger(__name__)
 
-
-feature_costs_map = {'min': 4, 'max': 4, 'sum': 10, 'mean': 11}
+# Area, in mm^2
+feature_costs_map = OrderedDict([
+    ('min', 0.0020),
+    ('max', 0.0020),
+    ('sum', 0.0265),
+    # ('sum', 0.0099)
+    ('mean', 0.0251)
+    # ('mean', 0.0084)
+])
+feature_costs_map_placeholder = {'min': 4, 'max': 4, 'sum': 10, 'mean': 11}
 
 
 def prepare_feature_data(args):
@@ -78,7 +86,7 @@ def get_subject_cv_splits(data, n_splits=5):
     for train_subjects_idx, val_subjects_idx in gkf.split(subject_ids, groups=subject_ids):
         train_subjects = subject_ids[train_subjects_idx]
         val_subjects = subject_ids[val_subjects_idx]
-    cv_subject_folds.append((train_subjects, val_subjects))
+        cv_subject_folds.append((train_subjects, val_subjects))
     return cv_subject_folds
 
 

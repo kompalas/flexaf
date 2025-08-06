@@ -85,7 +85,7 @@ def set_extra_clf_params(classifier_type, input_precisions=None, x_test=None, y_
     elif classifier_type == ClassifierType.MLP:
         extra_params['activation'] = 'relu'
         extra_params['max_iter'] = 400
-        extra_params['hidden_layer_sizes'] = (50,)
+        extra_params['hidden_layer_sizes'] = (100,)
 
     return extra_params
 

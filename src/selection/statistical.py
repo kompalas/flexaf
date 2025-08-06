@@ -104,8 +104,8 @@ def run_statistical_feature_selection(args):
     sparsity_levels = [0.2, 0.5, 0.9]
     weight_precisions = [4, 6, 8, 10]
     input_precision = args.default_inputs_precision
-    feature_sizes = [5, 10, 15, 20, 25, 30]
-    classifiers = ['mlp', 'decisiontree', 'svm']
+    feature_sizes = [8] #[5, 10, 15, 20, 25, 30]
+    classifiers = ['mlp'] #, 'decisiontree', 'svm']
     feature_selectors = {
         'DISR': disr_select,
         'Fisher': fisher_select,
@@ -123,6 +123,8 @@ def run_statistical_feature_selection(args):
 
     all_results = []
     for num_features in feature_sizes:
+        if num_features > x_train.shape[1]:
+            continue
         for fs_name, selector in feature_selectors.items():
 
             # perform feature selection
