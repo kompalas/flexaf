@@ -217,9 +217,7 @@ def run_gated_model_pruning_experiment(args):
                 pruned_model_name = f"gate_model_fold{fold}_pruned_{thresh:.3f}_trial{i}.keras"
                 clf._clf.save(os.path.join(results_clf_dir, pruned_model_name))
                 np.save(os.path.join(results_data_dir, f"x_train_fold{fold}_pruned_{thresh:.3f}_trial{i}.npy"), x_train_sub)
-                np.save(os.path.join(results_data_dir, f"y_train_fold{fold}_pruned_{thresh:.3f}_trial{i}.npy"), y_train)
                 np.save(os.path.join(results_data_dir, f"x_test_fold{fold}_pruned_{thresh:.3f}_trial{i}.npy"), x_test_sub)
-                np.save(os.path.join(results_data_dir, f"y_test_fold{fold}_pruned_{thresh:.3f}_trial{i}.npy"), y_test)
 
 
 if __name__ == "__main__":

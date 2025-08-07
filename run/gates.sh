@@ -28,7 +28,7 @@ if [[ -n "$dataset" ]]; then
     elif [[ "$dataset" == "drivedb" ]]; then
         dataset_file="data/DriveDB.csv"
     elif [[ "$dataset" == "har" ]]; then
-        dataset_file="data/HAD.csv"
+        dataset_file="data/HAR.csv"
     elif [[ "$dataset" == "wisdm" ]]; then
         dataset_file="data/wisdm.csv"
     elif [[ "$dataset" == "harth" ]]; then

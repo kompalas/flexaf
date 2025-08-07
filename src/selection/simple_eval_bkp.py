@@ -2,7 +2,7 @@ import logging
 from collections import OrderedDict
 import numpy as np
 from src.dataset import get_dataset
-from src.selection import feature_costs_map
+from src.selection import feature_costs_map, kept_features
 from src.features import create_features_from_array_sliding
 from src.classifier import set_extra_clf_params, get_classifier
 from src.args import AccuracyMetric
@@ -14,8 +14,6 @@ logger = logging.getLogger(__name__)
 def perform_basic_evaluation(args):
     """Perform a simple evaluation of the dataset with basic features
     """
-    selected_features = ['mean', 'max', 'min', 'sum']
-
     data, sampling_rates, dataset_sr = get_dataset(
         args.dataset_type, args.dataset_file,
         resampling_rate=args.uniform_resampling_rate,
@@ -32,7 +30,7 @@ def perform_basic_evaluation(args):
     # num_sensors = x_train.shape[1]
 
     features_dict = OrderedDict([
-        (sensor_id, selected_features)
+        (sensor_id, kept_features)
         for sensor_id in range(0, num_sensors)
     ])
     feature_costs = np.array([

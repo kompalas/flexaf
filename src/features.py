@@ -177,7 +177,7 @@ def create_features_from_df_subjectwise(data, features_dict, inputs_precisions,
                 this_feature_data = convert_to_fixed_point(this_feature_data, precision,
                                                            normalize='0->1', rescale=True, signed=False,
                                                            fractional_bits=precision)
-                
+
                 # Extract labels: majority label in each window
                 labels = stats.mode(reshaped_labels, axis=1)[0].flatten()
 

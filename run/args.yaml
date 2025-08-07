@@ -1,12 +1,12 @@
 generic_args:
-  name: sota_mlp
+  name: sota_mlp_spd
   verbose: False
   deterministic: True
   global_seed: 123
 
 app_args:
-  dataset_type: wesad_merged  # wesad_merged, wesad_rb, wesad_e4, stressinnurses, spd, affectiveroad, drivedb, har, wisdm, harth
-  dataset_file: data/wesad_merged.csv
+  dataset_type: spd  # wesad_merged, wesad_rb, wesad_e4, stressinnurses, spd, affectiveroad, drivedb, har, wisdm, harth
+  dataset_file: data/spd.csv
   uniform_resampling_rate: 32  # in Hz, None for no resampling
   binary_classification: False
   three_class_classification: True

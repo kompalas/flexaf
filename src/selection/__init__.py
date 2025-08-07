@@ -14,12 +14,14 @@ logger = logging.getLogger(__name__)
 feature_costs_map = OrderedDict([
     ('min', 0.0020),
     ('max', 0.0020),
-    ('sum', 0.0265),
-    # ('sum', 0.0099)
-    ('mean', 0.0251)
-    # ('mean', 0.0084)
+    # ('sum', 0.0265),
+    ('sum', 0.0099),
+    # ('mean', 0.0251)
+    ('mean', 0.0084),
 ])
 feature_costs_map_placeholder = {'min': 4, 'max': 4, 'sum': 10, 'mean': 11}
+
+kept_features = ['min', 'max', 'sum', 'mean']
 
 
 def prepare_feature_data(args):
@@ -35,7 +37,7 @@ def prepare_feature_data(args):
     num_classes = len(train_data['label'].unique())
 
     features_dict = OrderedDict([
-        (sensor_id, ['min', 'max', 'sum', 'mean'])
+        (sensor_id, kept_features)
         for sensor_id in range(0, num_sensors)
     ])
     feature_costs = np.array([
@@ -103,7 +105,7 @@ def prepare_feature_data_cross_validation(args, cv_folds=5):
     num_classes = len(data['label'].unique())
 
     features_dict = OrderedDict([
-        (sensor_id, ['min', 'max', 'sum', 'mean'])
+        (sensor_id, kept_features)
         for sensor_id in range(0, num_sensors)
     ])
     feature_costs = np.array([
