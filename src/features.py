@@ -151,22 +151,20 @@ def create_features_from_df_subjectwise(data, features_dict, inputs_precisions,
             precision = inputs_precisions[sensor_id]
             sampling_rate = sampling_rates[sensor_id]
 
-            fxp_data = convert_to_fixed_point(subject_data[sensor_type], precision,
-                                              normalize=None, rescale=True, signed=False,
-                                              fractional_bits=precision)
-            resampled_data = resample(fxp_data, original_sampling_rate, sampling_rate)
+            # NOTE: Input data are floats when the arrive at the feature extractors, so no need for quantization here
+            # fxp_data = convert_to_fixed_point(subject_data[sensor_type], precision,
+            #                                   normalize=None, rescale=True, signed=False,
+            #                                   fractional_bits=precision)
+            resampled_data = resample(subject_data[sensor_type], original_sampling_rate, sampling_rate)
             resampled_labels = resample(subject_data['label'], original_sampling_rate, sampling_rate)
 
             window_shape = window_size * sampling_rate
             step = target_clock * sampling_rate
-
             if len(resampled_data) < window_shape:
                 continue  # Skip short sequences
-
             reshaped_data = np.lib.stride_tricks.sliding_window_view(
                 resampled_data, window_shape=window_shape
             )[::step]
-
             reshaped_labels = np.lib.stride_tricks.sliding_window_view(
                 resampled_labels, window_shape=window_shape
             )[::step]
@@ -175,7 +173,8 @@ def create_features_from_df_subjectwise(data, features_dict, inputs_precisions,
                 # Extract feature
                 this_feature_data = extract_feature(reshaped_data, feature, **kwargs)
                 this_feature_data = convert_to_fixed_point(this_feature_data, precision,
-                                                           normalize='0->1', rescale=True, signed=False,
+                                                           # normalize='0->1', # NOTE: We do not normalize the output of feature extractors
+                                                           rescale=True, signed=False,
                                                            fractional_bits=precision)
 
                 # Extract labels: majority label in each window

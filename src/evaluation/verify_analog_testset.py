@@ -55,7 +55,21 @@ def verify_feature_extraction_and_evaluation(model, dataset_type, dataset_file,
     return x_test_remade, y_test_remade_categ, remade_accuracy
 
 
-def merge_analog_features(*feature_files, remove_x_columns=False, input_precision=None, offset=0.0):
+def post_process_features(features, offset=1.0, N=3, vref=1.5, inputshift=1.0):
+    """Post-process features by removing ' X' suffix from column names."""
+    for column in features.columns:
+        if column.endswith(' X'):
+            continue  # skip columns with ' X' suffix
+
+        if 'min' in column or 'max' in column or 'mean' in column:
+            features[column] = features[column] - offset
+        elif 'sum' in column:
+            features[column] = features[column] + ((N - 1) * vref) - (N * inputshift)
+    return features
+
+
+def merge_analog_features(*feature_files, remove_x_columns=False, input_precision=None, 
+                          offset=1.0, N=3, vref=1.5, inputshift=1.0):
     """Merge multiple feature files into a single dataframe."""
     merged_features = []
     for feature_file in feature_files:
@@ -64,7 +78,9 @@ def merge_analog_features(*feature_files, remove_x_columns=False, input_precisio
         if remove_x_columns:
             columns_to_remove = [col for col in features.columns if col.endswith(' X')]
             features = features.drop(columns=columns_to_remove)
-        merged_features.append(features)
+
+        processed_features = post_process_features(features, offset, N, vref, inputshift)
+        merged_features.append(processed_features)
 
     # concatenate all feature dataframes horizontally
     merged_df = pd.concat(merged_features, axis=1)
@@ -72,7 +88,7 @@ def merge_analog_features(*feature_files, remove_x_columns=False, input_precisio
     merged_df = merged_df - offset
 
     if input_precision is None:
-        return merged_df.values
+        return merged_df
 
     # convert each feature column to fixed-point representation
     features_data = []
@@ -83,11 +99,54 @@ def merge_analog_features(*feature_files, remove_x_columns=False, input_precisio
             normalize=None, rescale=True, signed=False, 
         )
         features_data.append(fxp_data)
-    return np.array(features_data).T
+    return pd.DataFrame(np.array(features_data).T, columns=merged_df.columns)
 
 
 def mse(a, b): return np.mean((a - b) ** 2)
 def mae(a, b): return np.mean(np.abs(a - b))
+
+
+import pandas as pd
+import re
+
+def align_dataframe_columns(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
+    if df1.shape[1] != df2.shape[1]:
+        raise ValueError("DataFrames must have the same number of columns")
+
+    # Extract sensor names and feature names from df1
+    df1_colnames = df1.columns.tolist()
+    # TODO: This assumes sensor names are in the format 'sensorX_featureY' where sensorX might include underscores, but features do not
+    df1_sensors = ['_'.join(col.split('_')[:-1]) for col in df1_colnames] 
+    df1_features = [col.split('_')[-1] for col in df1_colnames]
+
+    # Create the mapping from sorted sensor numbers in df2 to sensor names in df1
+    df2_sensor_info = []
+    for col in df2.columns:
+        match = re.match(r'V(\w+)_sensor(\d+)\s+Y', col)
+        if not match:
+            raise ValueError(f"Invalid column name format: {col}")
+        feature, sensor_number = match.groups()
+        df2_sensor_info.append((col, feature.lower(), int(sensor_number)))
+
+    # Sort sensor numbers and map to df1 sensor names
+    sorted_sensor_numbers = sorted(sensor_number for _, _, sensor_number in df2_sensor_info)
+    if len(set(sorted_sensor_numbers)) != len(set(df1_sensors)):
+        raise ValueError("Mismatch in number of unique sensors")
+    sensor_mapping = dict(zip(sorted_sensor_numbers, df1_sensors))
+
+    # Build mapping from df1 column names to df2 column names
+    col_mapping = {}
+    for df1_sensor, df1_feature in zip(df1_sensors, df1_features):
+        for col, df2_feature, sensor_number in df2_sensor_info:
+            if sensor_mapping[sensor_number] == df1_sensor and df2_feature == df1_feature:
+                col_mapping[f"{df1_sensor}_{df1_feature}"] = col
+                break
+        else:
+            raise ValueError(f"No match found in df2 for {df1_sensor}_{df1_feature}")
+
+    # Reorder df2
+    df2_reordered = df2[[col_mapping[col] for col in df1.columns]]
+    return df2_reordered
 
 
 if __name__ == "__main__":
@@ -112,11 +171,15 @@ if __name__ == "__main__":
 
     # load the analog test set features
     feature_file1 = '/home/balaskas/flexaf/data/analog/wesad_tuned_max_renamed.csv'
-    feature_file2 = '/home/balaskas/flexaf/data/analog/wesad_tuned_mean_renamed.csv'
-    x_test_analog = merge_analog_features(
-        feature_file1, feature_file2, 
-        remove_x_columns=True, input_precision=None, offset=1.0
+    # feature_file2 = '/home/balaskas/flexaf/data/analog/wesad_tuned_mean_renamed.csv'
+    feature_file2 = '/home/balaskas/flexaf/data/analog/wesad_tuned_min_renamed.csv'
+    analog_df = merge_analog_features(
+        feature_file1, feature_file2, # feature_file3,
+        remove_x_columns=True, input_precision=4,
     )
+    analog_df = align_dataframe_columns(x_test_remade, analog_df)
+    x_test_analog = analog_df.values
+    x_test_remade_np = x_test_remade.values
 
     # add labels from originally pruned test set
     original_df = pd.read_csv('/home/balaskas/flexaf/data/wesad_tuned.csv')
@@ -131,8 +194,13 @@ if __name__ == "__main__":
     print(f"Analog test set accuracy: {analog_accuracy:.5f}")
 
     # calculate the mse between each column of the original test set and the analog test set
-    mse_values = [mse(x_test_sub[:, i], x_test_analog[:, i]) for i in range(x_test_sub.shape[1])]
-    mae_values = [mae(x_test_sub[:, i], x_test_analog[:, i]) for i in range(x_test_sub.shape[1])]
+    if x_test_remade_np.shape[0] != x_test_analog.shape[0]:
+        min_length = min(x_test_remade_np.shape[0], x_test_analog.shape[0])
+        x_test_remade_np = x_test_remade_np[:min_length, :]
+        x_test_analog = x_test_analog[:min_length, :]
+
+    mse_values = [mse(x_test_remade_np[:, i], x_test_analog[:, i]) for i in range(x_test_remade_np.shape[1])]
+    mae_values = [mae(x_test_remade_np[:, i], x_test_analog[:, i]) for i in range(x_test_remade_np.shape[1])]
     print("MSE between original and analog test set features:", mse_values)
     print("MAE between original and analog test set features:", mae_values)
     print("MSE mean:", np.mean(mse_values))

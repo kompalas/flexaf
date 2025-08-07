@@ -52,7 +52,7 @@ def run_gated_model_pruning_experiment(args):
         x_train, y_train = create_features_from_df_subjectwise(
             data=train_data,
             features_dict=features_dict,
-            inputs_precisions=input_precisions,
+            inputs_precisions=[16] * len(input_precisions),  # use close-to floating-point precision for training
             sampling_rates=sampling_rates,
             original_sampling_rate=dataset_sr,
             window_size=args.default_window_size,

@@ -317,24 +317,28 @@ def convert_to_fixed_point(data, precision, normalize=None, rescale=False, signe
         }.get(precision, 0)  # default to 0 fractional bits
 
     min_val, max_val = np.min(data), np.max(data)
-    sign_bit = 1 if signed else 0
+    sign_bit = 1 if signed or normalize == '-1->1' else 0
     if normalize == '0->1':
         if min_val != max_val:
             # Normalize the data to fit within 0 to 1 range
             data = (data - min_val) / (max_val - min_val)
     elif normalize == '-1->1':
+        signed = True
+        sign_bit = 1  # Set sign bit for signed representation
         if min_val == max_val:
             data = np.zeros_like(data)  # Prevent division by zero
         else:
             data = 2 * (data - min_val) / (max_val - min_val) - 1
-            sign_bit = 1  # Set sign bit for signed representation
     elif normalize is not None:
         raise ValueError(f"Unsupported normalization type ({normalize}): use '0->1' or '-1->1'")
 
     # Scale to fixed-point range and clip
     factor = 2 ** fractional_bits
     scaled_data = np.round(data * factor).astype(int)
-    max_fixed_point, min_fixed_point = (2 ** (precision - sign_bit)) - 1, -(2 ** (precision - sign_bit))
+    if signed:
+        max_fixed_point, min_fixed_point = (2 ** (precision - sign_bit)) - 1, -(2 ** (precision - sign_bit))
+    else:
+        max_fixed_point, min_fixed_point = (2 ** precision) - 1, 0
     clipped_data = np.clip(scaled_data, min_fixed_point, max_fixed_point)
     if rescale:
         clipped_data = clipped_data / factor
