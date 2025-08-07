@@ -15,9 +15,9 @@ feature_costs_map = OrderedDict([
     ('min', 0.0020),
     ('max', 0.0020),
     # ('sum', 0.0265),
-    ('sum', 0.0099),
+    ('sum', 0.0099 / 2),  # Adjusted to regularize the cost of sum and mean
     # ('mean', 0.0251)
-    ('mean', 0.0084),
+    ('mean', 0.0084 / 2)  # Adjusted to regularize the cost of sum and mean,
 ])
 feature_costs_map_placeholder = {'min': 4, 'max': 4, 'sum': 10, 'mean': 11}
 
@@ -119,3 +119,38 @@ def prepare_feature_data_cross_validation(args, cv_folds=5):
     
     cv_subject_folds = get_subject_cv_splits(data, n_splits=cv_folds)
     return data, cv_subject_folds, feature_costs, features_dict, input_precisions, new_sampling_rates, dataset_sr, num_classes
+
+
+def select_specific_features(data, dataset_type, subjects_to_keep, features_to_keep, save=True):
+    """Select specific features from the dataset."""
+    if isinstance(data, (list, tuple)) and len(data) == 2:
+        # merge train and test data vertically
+        data = data[0].append(data[1], ignore_index=True)
+
+    # Filter the data to keep only the specified subjects and save to csv
+    pruned_data = data[data['subject'].isin(subjects_to_keep)]
+    if save:
+        pruned_data.to_csv(f'{dataset_type.name.lower()}_32hz_pruned.csv', index=False)
+
+    # Create a features dictionary based on the specified features to keep
+    num_sensors = len(pruned_data.columns) - 2
+    features_dict = OrderedDict([
+        (sensor_id, kept_features)
+        for sensor_id in range(0, num_sensors)
+    ])
+    all_feature_names = [
+        f"{sensor_id}_{feature}"
+        for sensor_id, features in features_dict.items()
+        for feature in features
+    ]
+    features_names_to_keep = np.array(all_feature_names)[features_to_keep]
+    features_dict_to_keep = OrderedDict()
+    for feature in features_names_to_keep:
+        sensor, feature_name = feature.split('_')
+        sensor = int(sensor)
+        logger.info(f"Sensor {sensor} ({pruned_data.columns[sensor]}): {feature_name}")
+        if sensor not in features_dict_to_keep:
+            features_dict_to_keep[sensor] = []
+        features_dict_to_keep[sensor].append(feature_name)
+
+    return pruned_data, features_dict_to_keep

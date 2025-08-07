@@ -25,6 +25,7 @@ from src.hw_templates.dt2verilog import write_tree_to_verilog
 from src.hw_templates.mlp2verilog import write_mlp_to_verilog
 # from src.hw_templates.mlp2verilog_bkp import write_mlp_to_verilog
 from src.hw_templates.svm2verilog import write_svm_to_verilog
+from src.hw_templates.keras2verilog import write_keras_model_to_verilog
 from src.hw_templates.utils import get_maxabs, get_width
 
 
@@ -759,3 +760,19 @@ class FCNNKerasWrapper(KerasNNWrapper):
             metrics=['accuracy']
         )
         return model
+
+    def to_verilog(self, input_precision=4, weight_precision=8, 
+                   verilog_file='top.v', tb_file='top_tb.v', inputs_file='inputs.txt', output_file='output.txt', 
+                   simclk_ms=1, **kwargs):
+        """Creat a verilog description for the MLP classifier."""
+        metadata = write_keras_model_to_verilog(
+            keras_model=self._clf,
+            input_bits=input_precision,
+            weight_bits=weight_precision,
+            verilog_file=verilog_file,
+            tb_file=tb_file,
+            inputs_file=inputs_file,
+            output_file=output_file,
+            simclk_ms=simclk_ms,
+        )
+        return metadata

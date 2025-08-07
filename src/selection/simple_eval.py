@@ -1,120 +1,73 @@
 import logging
 from collections import OrderedDict
 import numpy as np
-from src.dataset import get_dataset
-from src.selection import feature_costs_map, kept_features
+from src.selection import feature_costs_map, kept_features, prepare_feature_data_cross_validation
 from src.features import create_features_from_df_subjectwise
 from src.classifier import set_extra_clf_params, get_classifier
 from src.args import AccuracyMetric
+from src.utils import transform_categorical
 
 
 logger = logging.getLogger(__name__)
 
 
-def select_specific_features(data, dataset_type, subjects_to_keep, features_to_keep, save=True):
-    """Select specific features from the dataset."""
-    if isinstance(data, (list, tuple)) and len(data) == 2:
-        # merge train and test data vertically
-        data = data[0].append(data[1], ignore_index=True)
-
-    # Filter the data to keep only the specified subjects and save to csv
-    pruned_data = data[data['subject'].isin(subjects_to_keep)]
-    if save:
-        pruned_data.to_csv(f'{dataset_type.name.lower()}_32hz_pruned.csv', index=False)
-
-    # Create a features dictionary based on the specified features to keep
-    num_sensors = len(pruned_data.columns) - 2
-    features_dict = OrderedDict([
-        (sensor_id, kept_features)
-        for sensor_id in range(0, num_sensors)
-    ])
-    all_feature_names = [
-        f"{sensor_id}_{feature}"
-        for sensor_id, features in features_dict.items()
-        for feature in features
-    ]
-    features_names_to_keep = np.array(all_feature_names)[features_to_keep]
-    features_dict_to_keep = OrderedDict()
-    for feature in features_names_to_keep:
-        sensor, feature_name = feature.split('_')
-        sensor = int(sensor)
-        logger.info(f"Sensor {sensor} ({pruned_data.columns[sensor]}): {feature_name}")
-        if sensor not in features_dict_to_keep:
-            features_dict_to_keep[sensor] = []
-        features_dict_to_keep[sensor].append(feature_name)
-
-    return pruned_data, features_dict_to_keep
-
 
 def perform_basic_evaluation(args):
-    """Perform a simple evaluation of the dataset with basic features
+    """Perform a simple evaluation of the dataset with basic features and k-fold cross-validation.
     """
-    data, sampling_rates, dataset_sr = get_dataset(
-        args.dataset_type, args.dataset_file,
-        resampling_rate=args.uniform_resampling_rate,
-        binary_classification=args.binary_classification,
-        three_class_classification=args.three_class_classification,
-        test_size=args.test_size,
-        # test_size=None,
-    )
+    cv_folds = int(1/args.test_size)
+    data, cv_subject_folds, feature_costs, features_dict, input_precisions, sampling_rates, dataset_sr, num_classes = \
+        prepare_feature_data_cross_validation(args, cv_folds)
 
-    # # Change these to get the correct features
-    # subjects_to_keep = ['S15', 'S4', 'S9']
-    # features_to_keep = [1, 16, 17, 20, 25, 32, 41, 45]
-    # select_specific_features(data, args.dataset_type, selected_features, subjects_to_keep, features_to_keep)
-    # data.to_csv(f'{args.dataset_type.name.lower()}_32hz.csv', index=False)
+    results = []
+    for fold, (train_subjects, test_subjects) in enumerate(cv_subject_folds):
+        train_data = data[data['subject'].isin(train_subjects)]
+        test_data = data[data['subject'].isin(test_subjects)]
+        logger.info(f"Running fold {fold + 1}/{cv_folds} with subjects: "
+                    f"train={train_subjects.tolist()}, test={test_subjects.tolist()}")
 
-    train_data, test_data = data
-    num_sensors = len(train_data.columns) - 2  # Exclude 'label' and 'subject'
+        x_train, y_train = create_features_from_df_subjectwise(
+            data=train_data,
+            features_dict=features_dict,
+            inputs_precisions=[16] * len(input_precisions),  # use close-to floating-point precision for training
+            sampling_rates=sampling_rates,
+            original_sampling_rate=dataset_sr,
+            window_size=args.default_window_size,
+            target_clock=args.performance_target
+        )
+        x_test, y_test = create_features_from_df_subjectwise(
+            data=test_data,
+            features_dict=features_dict,
+            inputs_precisions=input_precisions,
+            sampling_rates=sampling_rates,
+            original_sampling_rate=dataset_sr,
+            window_size=args.default_window_size,
+            target_clock=args.performance_target
+        )
+        x_train = x_train.values.astype(np.float32)
+        x_test = x_test.values.astype(np.float32)
 
-    features_dict = OrderedDict([
-        (sensor_id, kept_features)
-        for sensor_id in range(0, num_sensors)
-    ])
-    feature_costs = np.array([
-        feature_costs_map[feature] 
-        for sensor_features in features_dict.values()
-        for feature in sensor_features
-    ])
-    input_precisions = [args.default_inputs_precision] * num_sensors
+        extra_params = set_extra_clf_params(
+            args.classifier_type,
+            input_precisions=input_precisions,
+            x_test=x_test, y_test=y_test,
+            feature_costs=None
+        )
+        if 'num_classes' in extra_params:
+            extra_params['num_classes'] = num_classes
 
-    # NOTE: this forces no resampling during feature extraction (equal to the 'dataset_sampling_rate')
-    new_sampling_rates = [dataset_sr] * num_sensors
-    # change to this if you want to use different rates per sensor
-    # new_sampling_rates = [max(rates) for sensor, rates in sampling_rates.items()]
+        classifier = get_classifier(
+            args.classifier_type,
+            accuracy_metric=AccuracyMetric.Accuracy,
+            tune=args.tune_classifier,
+            train_data=(x_train, y_train),
+            seed=args.global_seed,
+            **extra_params
+        )
+        accuracy = classifier.train(x_train, y_train, x_test, y_test)
+        results.append(accuracy)
+        logger.info(f"Accuracy for fold {fold + 1}: {accuracy:.4f}")
 
-    x_train, y_train = create_features_from_df_subjectwise(
-        data=train_data,
-        features_dict=features_dict,
-        inputs_precisions=input_precisions,
-        sampling_rates=new_sampling_rates,
-        original_sampling_rate=dataset_sr,
-        window_size=args.default_window_size,
-        target_clock=args.performance_target
-    )
-    x_test, y_test = create_features_from_df_subjectwise(
-        data=test_data,
-        features_dict=features_dict,
-        inputs_precisions=input_precisions,
-        sampling_rates=new_sampling_rates,
-        original_sampling_rate=dataset_sr,
-        window_size=args.default_window_size,
-        target_clock=args.performance_target
-    )
-
-    extra_params = set_extra_clf_params(
-        args.classifier_type,
-        input_precisions=input_precisions,
-        x_test=x_test, y_test=y_test,
-        feature_costs=feature_costs
-    )
-    classifier = get_classifier(
-        args.classifier_type,
-        accuracy_metric=AccuracyMetric.Accuracy,
-        tune=args.tune_classifier,
-        train_data=(x_train, y_train),
-        seed=args.global_seed,
-        **extra_params
-    )
-    accuracy = classifier.train(x_train, y_train, x_test, y_test)
-    logger.info(f"Accuracy: {accuracy:.4f}")
+    fold_w_highest_accuracy = np.argmax(results)
+    best_accuracy = results[fold_w_highest_accuracy]
+    logger.info(f"Best accuracy: {best_accuracy:.4f} in fold {fold_w_highest_accuracy + 1}")

@@ -371,8 +371,12 @@ def get_size(directory):
 
 def accuracy_keras(y_test, y_pred, **accuracy_params):
     """Get the accuracy of a Keras model"""
-    y_pred = np.argmax(y_pred, axis=1)
-    y_test = np.argmax(y_test, axis=1)
+    if y_pred.ndim > 1 and y_pred.shape[1] > 1:
+        # If predictions are one-hot encoded, convert to class indices
+        y_pred = np.argmax(y_pred, axis=1)
+    if y_test.ndim > 1 and y_test.shape[1] > 1:
+        # If true labels are one-hot encoded, convert to class indices
+        y_test = np.argmax(y_test, axis=1)
     return np.mean(y_test == y_pred)
 
 
