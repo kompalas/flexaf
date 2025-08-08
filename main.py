@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 def main():
     args = env_cfg()
     args.resdir = logging.getLogger().logdir
-    with open(os.path.join(args.resdir, 'args.yaml'), 'w') as f:
+    with open(os.path.join(args.resdir, 'args.yaml'), 'wb') as f:
         pickle.dump(args, f)
 
     if args.execute_differentiable_feature_selection:
