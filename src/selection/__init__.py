@@ -23,8 +23,12 @@ feature_costs_map_placeholder = {'min': 4, 'max': 4, 'sum': 10, 'mean': 11}
 
 kept_features = ['min', 'max', 'sum', 'mean']
 
+all_features = ['min', 'max', 'mean', 'std', 'sum', 
+                'skewness', 'kurtosis', 'range', 'median',
+                'peaks', 'npeaks', 'muPeaks']
 
-def prepare_feature_data(args):
+
+def prepare_feature_data(args, use_all_features=False):
     data, sampling_rates, dataset_sr = get_dataset(
         args.dataset_type, args.dataset_file,
         resampling_rate=args.uniform_resampling_rate,
@@ -37,14 +41,19 @@ def prepare_feature_data(args):
     num_classes = len(train_data['label'].unique())
 
     features_dict = OrderedDict([
+        (sensor_id, all_features) if use_all_features else
         (sensor_id, kept_features)
         for sensor_id in range(0, num_sensors)
     ])
-    feature_costs = np.array([
-        feature_costs_map[feature] 
-        for sensor_features in features_dict.values()
-        for feature in sensor_features
-    ])
+
+    if use_all_features:
+        feature_costs = None
+    else:
+        feature_costs = np.array([
+            feature_costs_map[feature] 
+            for sensor_features in features_dict.values()
+            for feature in sensor_features
+        ])
 
     input_precisions = [args.default_inputs_precision] * num_sensors
     new_sampling_rates = [dataset_sr] * num_sensors  # this forces no resampling during feature extraction (equal to the 'dataset_sampling_rate')
@@ -76,6 +85,7 @@ def prepare_feature_data(args):
         feature_costs=feature_costs
     )
     filtered_params = {k: extra_params[k] for k in ['num_classes', 'num_features', 'num_samples', 'test_data'] if k in extra_params}
+    filtered_params['num_classes'] = num_classes
     return (x_train.values, y_train), (x_test.values, y_test), (y_train_categ, y_test_categ), feature_costs, filtered_params, input_precisions
 
 

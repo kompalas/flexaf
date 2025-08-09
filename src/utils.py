@@ -12,7 +12,7 @@ import tensorflow
 import yaml
 from collections import Counter
 from enum import Enum
-from keras.api.utils import to_categorical
+from tensorflow.keras.utils import to_categorical
 from sklearn.metrics import f1_score
 from datetime import datetime
 from glob import glob

@@ -7,6 +7,7 @@ data/HAR.csv
 data/harth.csv
 data/WISDM/
 data/wisdm.csv
+data/daphnet.csv
 latest_log_dir
 latest_log_file
 *.log

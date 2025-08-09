@@ -47,7 +47,8 @@ def get_dataset(dataset_type, dataset_file, resampling_rate=None,
         DatasetType.Coswara: get_coswara,
         DatasetType.HAR: get_har,
         DatasetType.HARTH: get_harth,
-        DatasetType.WISDM: get_wisdm
+        DatasetType.WISDM: get_wisdm,
+        DatasetType.DaphNET: get_daphnet
     }
 
     data = pd.read_csv(dataset_file, low_memory=False)
@@ -245,3 +246,12 @@ def get_wisdm(data):
     uniform_sampling_rate = 20
     return data, sampling_rates, uniform_sampling_rate
 
+
+def get_daphnet(data):
+    """Load the DaphNET dataset and preprocess it."""
+    data = data.rename(columns={'individual': 'subject', 'annotation': 'label'})
+    data = data.drop(columns=['time'])
+    sampling_rates = {column: [64, 32, 16, 8, 4] for column in data.columns 
+                      if column not in ['label', 'subject']}
+    uniform_sampling_rate = 64
+    return data, sampling_rates, uniform_sampling_rate

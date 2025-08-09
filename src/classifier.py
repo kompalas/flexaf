@@ -58,20 +58,20 @@ def set_extra_clf_params(classifier_type, input_precisions=None, x_test=None, y_
     extra_params = {}
 
     if classifier_type in (ClassifierType.BNN, ClassifierType.TNN, ClassifierType.FCNN):
-        assert input_precisions is not None, "For Keras models, the input precisions must be provided."
+        if classifier_type in (ClassifierType.BNN, ClassifierType.TNN): 
+            assert input_precisions is not None, "For BNN/TNN models, the input precisions must be provided."
         assert y_test is not None and x_test is not None, "For Keras models, the test data must be provided to set the number of classes, features, and samples."
-        
+
         extra_params['input_bitwidth'] = max(input_precisions)
         extra_params['num_nodes'] = 100
         extra_params['learning_rate'] = 0.001
         extra_params['feature_costs'] = feature_costs
         extra_params['lambda_reg'] = 0.0005
 
-        if x_test is not None and y_test is not None:
-            extra_params['num_classes'] = len(np.unique(y_test))
-            extra_params['num_features'] = x_test.shape[1]
-            extra_params['num_samples'] = x_test.shape[0]
-            extra_params['test_data'] = (x_test, y_test)
+        extra_params['num_classes'] = len(np.unique(y_test))
+        extra_params['num_features'] = x_test.shape[1]
+        extra_params['num_samples'] = x_test.shape[0]
+        extra_params['test_data'] = (x_test, y_test)
 
     elif classifier_type == ClassifierType.DecisionTree:
         extra_params['criterion'] = 'entropy'
@@ -377,7 +377,7 @@ class MLPClassifierWrapper(SKLearnClassifierWrapper):
 
     def set_tuned_parameters(self):
         self.tuned_parameters = {
-            'hidden_layer_sizes': [(5,), (10,), (20,), (50,), (100,), (10, 10), (50, 50), (100, 100)],
+            'hidden_layer_sizes': [ (10,), (50,), (100,), (50, 100), (50, 50), (100, 100)],
         }
 
     def get_architecture(self):
@@ -585,7 +585,7 @@ class KerasNNWrapper(_ClassifierWrapper):
             # logger=logger,
         )
         early_stop = keras.callbacks.EarlyStopping(monitor='val_loss',
-                                                   patience=5,
+                                                   patience=10,
                                                    restore_best_weights=True,
                                                    verbose=0)
         # search for the model with the best test accuracy 
@@ -609,7 +609,7 @@ class KerasNNWrapper(_ClassifierWrapper):
         y_test = transform_categorical(y_test, self.num_classes)
 
         early_stop = keras.callbacks.EarlyStopping(monitor='val_loss',
-                                                   patience=5,
+                                                   patience=10,
                                                    restore_best_weights=True,
                                                    verbose=0)
         train_kwargs['callbacks'] = train_kwargs.get('callbacks', []) + [early_stop]
@@ -711,8 +711,8 @@ class FCNNKerasWrapper(KerasNNWrapper):
         num_classes = extra_clf_params.get('num_classes')
         num_features = extra_clf_params.get('num_features')
         input_bitwidth = extra_clf_params.get('input_bitwidth', 8)
-        num_nodes = extra_clf_params.get('num_nodes', [10])
-        learning_rate = extra_clf_params.get('learning_rate', 0.01)
+        num_nodes = extra_clf_params.get('num_nodes', [100])
+        learning_rate = extra_clf_params.get('learning_rate', 0.001)
         feature_costs = extra_clf_params.get('feature_costs', [])
         lambda_reg = extra_clf_params.get('lambda_reg', None)
         temperature = extra_clf_params.get('temperature', 0.1)
@@ -745,6 +745,8 @@ class FCNNKerasWrapper(KerasNNWrapper):
             model.add(keras.Input(shape=(num_features,)))
 
         # create as many layers as specified in num_nodes
+        if isinstance(num_nodes, (int, float)):
+            num_nodes = [int(num_nodes)]
         for i, nodes in enumerate(num_nodes):
             model.add(layers.Dense(units=nodes,
                                    activation='relu',

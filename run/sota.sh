@@ -33,6 +33,8 @@ if [[ -n "$dataset" ]]; then
         dataset_file="data/wisdm.csv"
     elif [[ "$dataset" == "harth" ]]; then
         dataset_file="data/harth.csv"
+    elif [[ "$dataset" == "daphnet" ]]; then
+        dataset_file="data/daphnet.csv"
     else
         echo "Unknown dataset: $dataset"
         exit 1
@@ -43,8 +45,19 @@ if [[ -n "$dataset" ]]; then
     sed -i "/dataset_file:/c\  dataset_file: $dataset_file" $maindir/run/args.yaml
 fi
 
+num_features="${3:-}"
+if [[ -n "$num_features" ]]; then
+    if [[ "$num_features" =~ ^[0-9]+$ ]]; then
+        sed -i "/statistical_num_features:/c\  statistical_num_features: [$num_features]" $maindir/run/args.yaml
+    else
+        echo "Invalid number of features: $num_features"
+        exit 1
+    fi
+fi
+
 sed -i "/name:/c\  name: $exp_name" $maindir/run/args.yaml
-sed -i "/execute_statistical_feature_selection:/c\  execute_statistical_feature_selection: True" $maindir/run/args.yaml
+sed -i "/execute_statistical_soa_feature_selection:/c\  execute_statistical_soa_feature_selection: True" $maindir/run/args.yaml
+sed -i "/execute_statistical_feature_selection:/c\  execute_statistical_feature_selection: False" $maindir/run/args.yaml
 sed -i "/execute_heuristic_feature_selection:/c\  execute_heuristic_feature_selection: False" $maindir/run/args.yaml
 sed -i "/execute_greedy_feature_selection:/c\  execute_greedy_feature_selection: False" $maindir/run/args.yaml
 sed -i "/execute_differentiable_feature_selection:/c\  execute_differentiable_feature_selection: False" $maindir/run/args.yaml

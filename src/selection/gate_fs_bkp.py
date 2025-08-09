@@ -234,7 +234,7 @@ def run_gated_model_pruning_experiment(args):
     num_features = extra_params['num_features']
     num_classes = extra_params['num_classes']
 
-    from src.selection.statistical import fisher_select
+    from src.selection.statistical_islped import fisher_select
     features_to_use = fisher_select(x_train, y_train, k=num_features//2)  # select half of the features
     fisher_score_mask = np.zeros(num_features, dtype=np.float32)
     fisher_score_mask[features_to_use] = 1.0

@@ -33,6 +33,8 @@ if [[ -n "$dataset" ]]; then
         dataset_file="data/wisdm.csv"
     elif [[ "$dataset" == "harth" ]]; then
         dataset_file="data/harth.csv"
+    elif [[ "$dataset" == "daphnet" ]]; then
+        dataset_file="data/daphnet.csv"
     else
         echo "Unknown dataset: $dataset"
         exit 1
@@ -46,6 +48,7 @@ fi
 sed -i "/name:/c\  name: $exp_name" $maindir/run/args.yaml
 sed -i "/execute_differentiable_feature_selection:/c\  execute_differentiable_feature_selection: False" $maindir/run/args.yaml
 sed -i "/execute_statistical_feature_selection:/c\  execute_statistical_feature_selection: False" $maindir/run/args.yaml
+sed -i "/execute_statistical_soa_feature_selection:/c\  execute_statistical_soa_feature_selection: False" $maindir/run/args.yaml
 sed -i "/execute_heuristic_feature_selection:/c\  execute_heuristic_feature_selection: False" $maindir/run/args.yaml
 sed -i "/execute_greedy_feature_selection:/c\  execute_greedy_feature_selection: False" $maindir/run/args.yaml
 

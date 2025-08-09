@@ -8,6 +8,7 @@ from src.selection.gate_fs import run_gated_model_pruning_experiment
 from src.selection.gate_fs_gpu import run_gated_model_pruning_experiment as run_gated_model_pruning_experiment_gpu
 from src.selection.heuristic_fs import run_heuristic_feature_selection
 from src.selection.greedy_fs import run_greedy_feature_selection
+from src.selection.statistical_islped import run_soa_statistical_feature_selection
 from src.selection.statistical import run_statistical_feature_selection
 from src.selection.simple_eval import perform_basic_evaluation
 
@@ -38,6 +39,11 @@ def main():
         args.name = f"greedy_fs_{args.name}"
         logger.info("Running greedy feature selection...")
         run_greedy_feature_selection(args)
+
+    elif args.execute_statistical_soa_feature_selection:
+        args.name = f"statistical_soa_fs_{args.name}"
+        logger.info("Running statistical feature selection from the SoA...")
+        run_soa_statistical_feature_selection(args)
 
     elif args.execute_statistical_feature_selection:
         args.name = f"statistical_fs_{args.name}"

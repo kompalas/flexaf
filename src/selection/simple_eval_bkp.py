@@ -115,11 +115,13 @@ def select_specific_features(data, dataset_type, subjects_to_keep, features_to_k
 
     # Filter the data to keep only the specified subjects and save to csv
     pruned_data = data[data['subject'].isin(subjects_to_keep)]
+    # add a new index column called time, i.e., an ascending integer starting from 0
+    pruned_data['time'] = np.arange(len(pruned_data))
     if save:
         pruned_data.to_csv(f'{dataset_type.name.lower()}_32hz_pruned.csv', index=False)
 
     # Create a features dictionary based on the specified features to keep
-    num_sensors = len(pruned_data.columns) - 2
+    num_sensors = len(pruned_data.columns) - 3
     features_dict = OrderedDict([
         (sensor_id, kept_features)
         for sensor_id in range(0, num_sensors)
@@ -134,7 +136,7 @@ def select_specific_features(data, dataset_type, subjects_to_keep, features_to_k
     for feature in features_names_to_keep:
         sensor, feature_name = feature.split('_')
         sensor = int(sensor)
-        print(f"Sensor {sensor} ({pruned_data.columns[sensor]}): {feature_name}")
+        print(f"Sensor {sensor + 1} ({pruned_data.columns[sensor]}): {feature_name}")
         if sensor not in features_dict_to_keep:
             features_dict_to_keep[sensor] = []
         features_dict_to_keep[sensor].append(feature_name)
@@ -221,10 +223,10 @@ if __name__ == "__main__":
 
     from src.args import DatasetType
 
-    dataset_type = DatasetType.HARTH
-    dataset_file = 'data/harth.csv'
-    subjects_to_keep = ['S012', 'S017', 'S022', 'S027', 'S029']
-    features_to_keep = [0, 1, 5, 12, 16, 17, 20]
+    dataset_type = DatasetType.DaphNET
+    dataset_file = 'data/daphnet.csv'
+    subjects_to_keep = ['S01R02', 'S03R03', 'S06R02']
+    features_to_keep = [28, 29, 31, 32, 33]
 
     data, sampling_rates, dataset_sr = get_dataset(
         dataset_type, dataset_file,

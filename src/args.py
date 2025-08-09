@@ -63,8 +63,16 @@ def cmd_args(parser):
                          help="Enable heuristic feature selection.")
     fs_args.add_argument("--execute-greedy-feature-selection", action='store_true',
                          help="Enable greedy feature selection.")
+    fs_args.add_argument("--execute-soa-statistical-feature-selection", action='store_true',
+                         help="Enable statistical feature selection from the state-of-the-art (SoA).")
     fs_args.add_argument("--execute-statistical-feature-selection", action='store_true',
                          help="Enable statistical feature selection.")
+    
+    # Arguments specific to different feature selection methods
+    app_args.add_argument("--statistical-num-features", type=int, nargs='+', default=[10],
+                          help="Specify the number of features to select for statistical feature selection. Default is [10].")
+    app_args.add_argument("--statistical-use-all-features", action='store_true',
+                          help="Use all features for statistical feature selection, not only the 4 analog ones.")
     return parser
 
 
@@ -110,6 +118,7 @@ class DatasetType(Enum):
     HARTH = 8
     WISDM = 9
     Coswara = 10
+    DaphNET = 11
 
 str_to_dataset_type_map = {entry.name.lower(): entry for entry in DatasetType}
 

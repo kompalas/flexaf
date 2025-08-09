@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def run_gated_model_pruning_experiment(args):
     """Run the gated model pruning experiment."""
-    search_trials = 30
+    search_trials = 50
     training_epochs = 50
     thresholds = [0.01, 0.05, 0.1, 0.2, 0.5]
     num_models_to_keep = min(5, search_trials)
@@ -87,7 +87,7 @@ def run_gated_model_pruning_experiment(args):
         def build_with_gates(hp):
             learning_rate = hp.Float('learning_rate', 1e-3, 5e-2, sampling='log')
             lambda_reg = hp.Float('lambda_reg', 1e-9, 1e-4, sampling='log')
-            temperature = hp.Float('temperature', 0.1, 20, sampling='log')
+            temperature = hp.Float('temperature', 0.1, 100, sampling='log')
 
             # learning_rate = 0.02
             # lambda_reg = 1e-10

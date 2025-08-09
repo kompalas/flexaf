@@ -28,88 +28,16 @@ def fisher_select(X, Y, k):
     return fs[:k].tolist()
 
 
-def prune_l1_norm(model, sparsity_ratio):
-    for i, W in enumerate(model.coefs_):
-        l1_norms = np.abs(W).sum(axis=1)  # L1 norm of each neuron's incoming weights
-        threshold = np.percentile(l1_norms, sparsity_ratio * 100)
-        mask = l1_norms >= threshold
-        # Zero out rows (neurons) with L1 norm below threshold
-        model.coefs_[i][~mask, :] = 0
-    return model
-
-
-def prune_l2_norm(model, sparsity_ratio):
-    for i, W in enumerate(model.coefs_):
-        l2_norms = np.linalg.norm(W, ord=2, axis=1)
-        threshold = np.percentile(l2_norms, sparsity_ratio * 100)
-        mask = l2_norms >= threshold
-        # Zero out rows (neurons) with L2 norm below threshold
-        model.coefs_[i][~mask, :] = 0
-    return model
-
-
-def prune_quantize_mlp(classifier, sparsity_levels, input_precision, weight_precisions, test_data, hw_eval_dir, prefix=''):
-    """Prune and quantize a multi-layer perceptron classifier."""
-    prefix = prefix + '_' if prefix != '' else ''
-    results = []
-    for sparsity in sparsity_levels:
-        # pruned_model = prune_l1_norm(model, sparsity)
-        pruned_model = prune_l2_norm(classifier._clf, sparsity)
-        classifier._clf = pruned_model
-        logger.info(f"Pruned model with sparsity {sparsity}")
-
-        _results = quantize_classifier(classifier, input_precision, weight_precisions, test_data, hw_eval_dir, prefix=f'{prefix}{int(100 * sparsity)}l2norm')
-        _results = [r | {'sparsity': sparsity} for r in _results]
-        results.extend(_results)
-    return results
-
-
-def quantize_classifier(classifier, input_precision, weight_precisions, test_data, hw_eval_dir, prefix=''):
-    """Quantize the classifier's weights and inputs."""
-    prefix = prefix + '_' if prefix != '' else ''
-    x_test, y_test = test_data
-
-    results = []
-    for precision in weight_precisions:
-        experiment_name = f'{prefix}{precision}bits'
-        this_hw_eval_dir = os.path.join(hw_eval_dir, experiment_name)
-        all_inputs_integer = np.all(np.modf(x_test)[0] == 0)
-        logger.info(f"Quantizing classifier with {precision}-bit weights and {input_precision}-bit inputs...")
-
-        hw_results, sim_accuracy = classifier_hw_evaluation(
-            classifier=classifier,
-            test_data=test_data,
-            input_precision=input_precision,
-            weight_precision=precision,
-            savedir=this_hw_eval_dir,
-            cleanup=True,
-            rescale_inputs=not all_inputs_integer,
-            prefix=experiment_name,
-            only_rtl=True
-        )
-        logger.info(f"Quantization accuracy: {sim_accuracy}")
-        logger.info(f"Synthesis results: {hw_results._asdict()}")
-
-        results.append(hw_results._asdict() | {
-            'input_precision': input_precision,
-            'weight_precision': precision,
-            'accuracy': sim_accuracy,
-        })
-    return results
-
-
 def run_statistical_feature_selection(args):
     """Run an exhaustive search with statistical feature selection methods
     """
-    sparsity_levels = [0.2, 0.5, 0.9]
-    weight_precisions = [4, 6, 8, 10]
     input_precision = args.default_inputs_precision
-    feature_sizes = [8] #[5, 10, 15, 20, 25, 30]
-    classifiers = ['mlp'] #, 'decisiontree', 'svm']
+    feature_sizes = args.statistical_num_features
+    classifiers = [args.classifier_type.name.lower()]  #['mlp', 'decisiontree', 'svm']
     feature_selectors = {
-        'DISR': disr_select,
+        # 'DISR': disr_select,
         'Fisher': fisher_select,
-        'JMI': jmi_select
+        # 'JMI': jmi_select
     }
 
     # create results directory
@@ -117,20 +45,23 @@ def run_statistical_feature_selection(args):
     os.makedirs(hw_eval_dir, exist_ok=True)
 
     # load dataset and split into train/test
-    train_data, test_data, categ_labels, feature_costs, extra_params, _ = prepare_feature_data(args)
+    train_data, test_data, categ_labels, feature_costs, filtered_params, _ = prepare_feature_data(args, use_all_features=True)
     x_train, y_train = train_data
     x_test, y_test = test_data
 
-    all_results = []
     for num_features in feature_sizes:
         if num_features > x_train.shape[1]:
+            logger.warning(f"Requested {num_features} features, but only {x_train.shape[1]} available. Skipping this size.")
             continue
         for fs_name, selector in feature_selectors.items():
 
             # perform feature selection
             selected_features = selector(x_train, y_train, k=num_features)
-            total_cost = np.sum(feature_costs[selected_features])
-            logger.info(f"Selected {num_features} features with total cost {total_cost}")
+            if feature_costs is not None:
+                total_cost = np.sum(feature_costs[selected_features])
+                logger.info(f"Selected {num_features} features with total cost {total_cost}")
+            else:
+                logger.info(f"Selected {num_features} features ({selected_features})")
 
             x_train_sub = x_train[:, selected_features]
             x_test_sub = x_test[:, selected_features]
@@ -140,33 +71,24 @@ def run_statistical_feature_selection(args):
 
                 # train floating-point classifier
                 clf_type = classifier_type_arg(clf_name)
-                extra_params = set_extra_clf_params(clf_type)
+                extra_params = set_extra_clf_params(clf_type,
+                                                    input_precisions=[input_precision] * x_train_sub.shape[1], 
+                                                    x_test=x_test_sub, y_test=y_test)
+
+                train_kwargs = {}
+                if clf_type == ClassifierType.FCNN:
+                    extra_params['num_classes'] = filtered_params['num_classes']
+                    train_kwargs = {'verbose': 1, 'epochs': 50, 'batch_size': 32}
+
                 clf = get_classifier(clf_type,
                                      accuracy_metric=AccuracyMetric.Accuracy,
                                      tune=True,
                                      train_data=(x_train_sub, y_train),
                                      seed=args.global_seed,
                                      **extra_params)
-                fp_accuracy = clf.train(x_train_sub, y_train, x_test_sub, y_test)
+                fp_accuracy = clf.train(x_train_sub, y_train,
+                                        x_test_sub, y_test,
+                                        **train_kwargs)
                 logger.info(f"Floating-point accuracy: {fp_accuracy}")
-
-                if clf_type == ClassifierType.MLP:
-                    results = prune_quantize_mlp(clf, sparsity_levels, input_precision, weight_precisions, (x_test_sub, y_test), hw_eval_dir)
-                else:
-                    results = quantize_classifier(clf, input_precision, weight_precisions, (x_test_sub, y_test), hw_eval_dir, prefix=f'{num_features}{fs_name}_{clf_name}')
-                    results = [r | {'sparsity': 0} for r in results]
-
-                results = [r | {
-                    'feature_selector': fs_name,
-                    'num_features': num_features,
-                    'classifier': clf_name,
-                    'fp_accuracy': fp_accuracy,
-                    'cost': total_cost,
-                    'selected_features': selected_features
-                } for r in results]
-                all_results.extend(results)
-
-                df = pd.DataFrame(all_results)
-                df.to_csv(os.path.join(args.resdir, 'statistical_results.csv'), index=False)
 
     logger.info("Statistical-based exhaustive search completed and results saved.")
