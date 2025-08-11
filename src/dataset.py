@@ -95,6 +95,7 @@ def split_dataset(data, test_size=0.2):
     num_train_subjects = int(len(subjects) * (1 - test_size))
     train_subjects = subjects[:num_train_subjects]
     test_subjects = subjects[num_train_subjects:]
+    logger.info(f"Splitting dataset:\n\t{len(train_subjects)} training subjects: {train_subjects}\n\t{len(test_subjects)} testing subjects: {test_subjects}")
 
     train_data = data[data['subject'].isin(train_subjects)]
     test_data = data[data['subject'].isin(test_subjects)]

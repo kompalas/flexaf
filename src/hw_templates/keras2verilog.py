@@ -20,7 +20,8 @@ class KerasAsSklearnMLP:
 
     def _map_activation(self):
         # assumes all hidden layers use same activation
-        act = self.model.layers[0].activation.__name__
+        first_hidden_layer = [layer for layer in self.model.layers if hasattr(layer, 'activation')][0]
+        act = first_hidden_layer.activation.__name__
         if act in ['relu', 'tanh', 'logistic', 'linear']:
             return act
         elif act == 'sigmoid':

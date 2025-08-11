@@ -113,6 +113,7 @@ def run_soa_statistical_feature_selection(args):
                 total_cost = np.sum(feature_costs[selected_features])
             else:
                 total_cost = 0.0
+            logger.info(f"Selected features: {selected_features}, Total cost: {total_cost}")
 
             x_train_sub = x_train[:, selected_features]
             x_test_sub = x_test[:, selected_features]
@@ -130,7 +131,8 @@ def run_soa_statistical_feature_selection(args):
                 'total_cost': total_cost,
                 'sparsity': 0.0,
                 'precision': 32,
-                'accuracy': acc
+                'accuracy': acc,
+                'selected_features': selected_features.tolist()
             })
             pd.DataFrame(all_results).to_csv(results_path, index=False)
             model.save(os.path.join(hw_eval_dir, f"{fs_name}_{k_features}_float.keras"))
@@ -150,7 +152,8 @@ def run_soa_statistical_feature_selection(args):
                     'total_cost': total_cost,
                     'sparsity': sparsity,
                     'precision': 32,
-                    'accuracy': pruned_acc
+                    'accuracy': pruned_acc,
+                    'selected_features': selected_features.tolist()
                 })
                 pd.DataFrame(all_results).to_csv(results_path, index=False)
                 model.save(os.path.join(hw_eval_dir, f"{fs_name}_{k_features}_pruned_{sparsity}.keras"))
@@ -165,7 +168,8 @@ def run_soa_statistical_feature_selection(args):
                         'total_cost': total_cost,
                         'sparsity': sparsity,
                         'precision': precision,
-                        'accuracy': q_acc
+                        'accuracy': q_acc,
+                        'selected_features': selected_features.tolist()
                     })
                     pd.DataFrame(all_results).to_csv(results_path, index=False)
                     model.save(os.path.join(hw_eval_dir, f"{fs_name}_{k_features}_pruned_{sparsity}_q{precision}.keras"))

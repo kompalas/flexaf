@@ -14,7 +14,8 @@ def write_argmax(logger_v, output_signals, output_name):
     num_classes = len(output_signals)
     width = (num_classes - 1).bit_length()  # Number of bits to encode the class index
     logger_v.debug(f"    // Argmax logic for {num_classes} classes")
-    logger_v.debug(f"    wire [{width-1}:0] {output_name};")
+    outp_decl = f'[{width-1}:0] ' if width > 1 else ''
+    logger_v.debug(f"    wire {outp_decl}{output_name};")
 
     def generate_condition(i, rest):
         """Recursively generates comparison condition for score_i to be the max."""
@@ -138,7 +139,8 @@ def mlp_to_verilog(
     metadata["num_inputs"] = num_inputs
     metadata["input_widths"] = input_widths
     metadata["num_outputs"] = mlp_model.coefs_[-1].shape[1]
-    metadata["num_classes"] = len(mlp_model.classes_)
+    num_classes = len(mlp_model.classes_)
+    metadata["num_classes"] = num_classes
 
     # Step 1: Create input fixed-point specs
     inpfxp_list = [ConvFxp(0, 0, width) for width in input_widths]
@@ -220,9 +222,11 @@ def mlp_to_verilog(
 
     # Step 6: Generate top module
     total_input_width = sum(input_widths)
-    output_width = get_width(len(activation_signals[-1]))
+    output_width = get_width(num_classes - 1)
     metadata["output_width"] = output_width
-    logger_v.debug(f"module top (input [{total_input_width-1}:0] {input_name}, output [{output_width-1}:0] {output_name});")
+    outp_decl = f'[{output_width-1}:0] ' if output_width > 1 else ''
+    input_decl = f'[{total_input_width-1}:0] ' if total_input_width > 1 else ''
+    logger_v.debug(f"module top (input {input_decl}{input_name}, output {outp_decl}{output_name});")
 
     # Slice input vector
     current = 0

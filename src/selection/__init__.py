@@ -45,6 +45,7 @@ def prepare_feature_data(args, use_all_features=False):
         (sensor_id, kept_features)
         for sensor_id in range(0, num_sensors)
     ])
+    logger.info(f"Features dictionary: {features_dict}")
 
     if use_all_features:
         feature_costs = None

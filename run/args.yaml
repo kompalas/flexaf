@@ -1,24 +1,29 @@
 generic_args:
-  name: sota_mlp_spd
+  name: simple_eval_fcnn_daphnet
   verbose: False
   deterministic: True
   global_seed: 123
 
 app_args:
-  dataset_type: spd  # wesad_merged, wesad_rb, wesad_e4, stressinnurses, spd, affectiveroad, drivedb, har, wisdm, harth
-  dataset_file: data/spd.csv
+  dataset_type: daphnet  # wesad_merged, wesad_rb, wesad_e4, stressinnurses, spd, affectiveroad, drivedb, har, wisdm, harth
+  dataset_file: data/daphnet.csv
   uniform_resampling_rate: 32  # in Hz, None for no resampling
   binary_classification: False
   three_class_classification: True
-  classifier_type: mlp  # decisiontree, mlp, svm, bnn, tnn, fcnn
+  classifier_type: fcnn  # decisiontree, mlp, svm, bnn, tnn, fcnn
   tune_classifier: False
   test_size: 0.2
   default_window_size: 1  # in seconds
   default_inputs_precision: 4
   performance_target: 1  # in seconds per prediction
 
-selection_args:
+selection_mode_args:
   execute_differentiable_feature_selection: False
   execute_heuristic_feature_selection: False
   execute_greedy_feature_selection: False
-  execute_statistical_feature_selection: True
+  execute_statistical_soa_feature_selection: False
+  execute_statistical_feature_selection: False
+
+selection_args:
+  statistical_num_features: [5, 10, 15, 20]
+  statistical_use_all_features: False

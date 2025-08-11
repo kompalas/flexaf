@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from collections import OrderedDict
 from src.dataset import get_dataset
-from src.selection import feature_costs_map, kept_features
+from src.selection import feature_costs_map, kept_features, all_features
 from src.features import create_features_from_array_sliding
 from src.features import create_features_from_df_subjectwise
 from src.classifier import set_extra_clf_params, get_classifier
@@ -107,7 +107,8 @@ def perform_basic_evaluation_random_split(args):
     logger.info(f"Accuracy: {accuracy:.4f}")
 
 
-def select_specific_features(data, dataset_type, subjects_to_keep, features_to_keep, save=True):
+def select_specific_features(data, dataset_type, subjects_to_keep, features_to_keep, save_dataset=True,
+                             use_all_features=False, use_only_mean_sum=False, use_only_mean_min=False):
     """Select specific features from the dataset."""
     if isinstance(data, (list, tuple)) and len(data) == 2:
         # merge train and test dataframes vertically
@@ -117,13 +118,23 @@ def select_specific_features(data, dataset_type, subjects_to_keep, features_to_k
     pruned_data = data[data['subject'].isin(subjects_to_keep)]
     # add a new index column called time, i.e., an ascending integer starting from 0
     pruned_data['time'] = np.arange(len(pruned_data))
-    if save:
+    if save_dataset:
         pruned_data.to_csv(f'{dataset_type.name.lower()}_32hz_pruned.csv', index=False)
 
     # Create a features dictionary based on the specified features to keep
     num_sensors = len(pruned_data.columns) - 3
+
+    if use_all_features:
+        which_features = all_features
+    elif use_only_mean_sum:
+        which_features = ['mean', 'sum']
+    elif use_only_mean_min:
+        which_features = ['mean', 'min']
+    else:
+        which_features = kept_features
+
     features_dict = OrderedDict([
-        (sensor_id, kept_features)
+        (sensor_id, which_features)
         for sensor_id in range(0, num_sensors)
     ])
     all_feature_names = [
@@ -223,10 +234,10 @@ if __name__ == "__main__":
 
     from src.args import DatasetType
 
-    dataset_type = DatasetType.DaphNET
-    dataset_file = 'data/daphnet.csv'
-    subjects_to_keep = ['S01R02', 'S03R03', 'S06R02']
-    features_to_keep = [28, 29, 31, 32, 33]
+    dataset_type = DatasetType.HARTH
+    dataset_file = 'data/harth.csv'
+    subjects_to_keep = ['S012', 'S017', 'S022', 'S027']
+    features_to_keep = [0, 1, 3, 6, 7, 11] 
 
     data, sampling_rates, dataset_sr = get_dataset(
         dataset_type, dataset_file,
@@ -236,4 +247,7 @@ if __name__ == "__main__":
         test_size=None,
         # test_size=None,
     )
-    select_specific_features(data, dataset_type, subjects_to_keep, features_to_keep, save=True)
+    select_specific_features(data, dataset_type, subjects_to_keep, features_to_keep, save_dataset=True,
+                             use_all_features=False, 
+                             use_only_mean_sum=False, 
+                             use_only_mean_min=True)

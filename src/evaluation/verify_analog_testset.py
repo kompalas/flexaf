@@ -31,7 +31,9 @@ def load_and_evaluate_model(expdir, fold, sparsity, trial):
 
 def verify_feature_extraction_and_evaluation(model, dataset_type, dataset_file, 
                                              resampling_rate, subjects_to_keep,features_to_keep, 
-                                             input_precision=4, window_size=1, target_clock=1):
+                                             save_dataset=False,
+                                             input_precision=4, window_size=1, target_clock=1,
+                                             use_all_features=False, use_only_mean_sum=False, use_only_mean_min=False):
     data, sampling_rates, dataset_sr = get_dataset(
         dataset_type, dataset_file,
         resampling_rate=resampling_rate,
@@ -39,7 +41,10 @@ def verify_feature_extraction_and_evaluation(model, dataset_type, dataset_file,
         three_class_classification=True,
         test_size=None,
     )
-    pruned_data, features_dict = select_specific_features(data, dataset_type, subjects_to_keep, features_to_keep, save=False)
+    pruned_data, features_dict = select_specific_features(data, dataset_type, subjects_to_keep, features_to_keep, save_dataset=save_dataset,
+                                                          use_all_features=use_all_features,
+                                                          use_only_mean_sum=use_only_mean_sum,
+                                                          use_only_mean_min=use_only_mean_min)
     x_test_remade, y_test_remade = create_features_from_df_subjectwise(
         data=pruned_data,
         features_dict=features_dict,
@@ -64,8 +69,11 @@ def post_process_features(features, offset=1.0, N=3, vref=1.5, inputshift=1.0):
 
         if 'min' in column.lower() or 'max' in column.lower() or 'mean' in column.lower():
             features[column] = features[column] - offset
+            # if 'max' in column.lower():
+            #     features[column] = features[column] + 0.1
         elif 'sum' in column.lower():
             features[column] = features[column] + ((N - 1) * vref) - (N * inputshift)
+            # features[column] = features[column] * 11 + 0.05
     return features
 
 
@@ -96,8 +104,6 @@ def merge_analog_features(*feature_files, remove_x_columns=False, input_precisio
 
     # concatenate all feature dataframes horizontally
     merged_df = pd.concat(merged_features, axis=1)
-    # subtract offset from all values
-    # merged_df = merged_df - offset
 
     if input_precision is None:
         return merged_df
@@ -140,47 +146,15 @@ def align_dataframe_columns(df1, df2, all_sensor_names):
     assert df1.shape[1] == df2.shape[1], "After trimming, the number of features should match."
     return df2
 
-    # Extract sensor names and feature names from df1
-    df1_colnames = df1.columns.tolist()
-    # TODO: This assumes sensor names are in the format 'sensorX_featureY' where sensorX might include underscores, but features do not
-    df1_sensors = ['_'.join(col.split('_')[:-1]) for col in df1_colnames] 
-    df1_features = [col.split('_')[-1] for col in df1_colnames]
-
-    # Create the mapping from sorted sensor numbers in df2 to sensor names in df1
-    df2_sensor_info = []
-    for col in df2.columns:
-        match = re.match(r'V(\w+)_sensor(\d+)\s+Y', col)
-        if not match:
-            raise ValueError(f"Invalid column name format: {col}")
-        feature, sensor_number = match.groups()
-        df2_sensor_info.append((col, feature.lower(), int(sensor_number)))
-
-    # Sort sensor numbers and map to df1 sensor names
-    sorted_sensor_numbers = sorted(sensor_number for _, _, sensor_number in df2_sensor_info)
-    if len(set(sorted_sensor_numbers)) != len(set(df1_sensors)):
-        raise ValueError("Mismatch in number of unique sensors")
-    sensor_mapping = dict(zip(sorted_sensor_numbers, df1_sensors))
-
-    # Build mapping from df1 column names to df2 column names
-    col_mapping = {}
-    for df1_sensor, df1_feature in zip(df1_sensors, df1_features):
-        for col, df2_feature, sensor_number in df2_sensor_info:
-            if sensor_mapping[sensor_number] == df1_sensor and df2_feature == df1_feature:
-                col_mapping[f"{df1_sensor}_{df1_feature}"] = col
-                break
-        else:
-            raise ValueError(f"No match found in df2 for {df1_sensor}_{df1_feature}")
-
-    # Reorder df2
-    df2_reordered = df2[[col_mapping[col] for col in df1.columns]]
-    return df2_reordered
-
 
 if __name__ == "__main__":
+    use_all_features = False
+    use_only_mean_sum = False
+    use_only_mean_min = False
 
     # expdir = '/home/balaskas/flexaf/saved_logs/wesad_merged/diff_fs_fcnn_wesad_merged___2025.08.08-08.00.07.792'
     # fold = 4
-    # sparsity = 0.2
+    # sparsity = 0.5
     # trial = 1
     # dataset_type = DatasetType.WESAD_Merged
     # dataset_file = 'data/wesad_merged.csv'
@@ -214,16 +188,46 @@ if __name__ == "__main__":
     # feature_file1 = '/home/balaskas/flexaf/data/analog/Harth_pruned_minmax_renamed__diff_fs_fcnn_harth___2025.08.07-19.46.46.517.csv'
     # feature_file2 = '/home/balaskas/flexaf/data/analog/Harth_pruned_mean_renamed__diff_fs_fcnn_harth___2025.08.07-19.46.46.517.csv'  # only for mean features
 
-    expdir = '/home/balaskas/flexaf/saved_logs/spd/diff_fs_fcnn_spd___2025.08.06-20.55.49.900'
-    fold, trial, sparsity = 1, 4, 0.2
-    # fold, trial, sparsity = 1, 1, 0.5
-    dataset_type = DatasetType.SPD
-    dataset_file = 'data/spd.csv'
-    subjects_to_keep = [2, 7, 12, 17, 22, 27, 32]
-    features_to_keep = [0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21, 23]
-    # features_to_keep = [1, 2, 3, 4, 5, 6, 8, 9, 13, 17, 20, 21]
-    feature_file1 = '/home/balaskas/flexaf/data/analog/spd_pruned_mean_sum_renamed__diff_fs_fcnn_spd___2025.08.06-20.55.49.900.csv'
-    feature_file2 = '/home/balaskas/flexaf/data/analog/spd_pruned_min_max_renamed__diff_fs_fcnn_spd___2025.08.06-20.55.49.900.csv'
+    # expdir = '/home/balaskas/flexaf/saved_logs/spd/diff_fs_fcnn_spd___2025.08.06-20.55.49.900'
+    # fold, trial, sparsity = 1, 4, 0.2
+    # # fold, trial, sparsity = 1, 1, 0.5
+    # dataset_type = DatasetType.SPD
+    # dataset_file = 'data/spd.csv'
+    # subjects_to_keep = [2, 7, 12, 17, 22, 27, 32]
+    # features_to_keep = [0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21, 23]
+    # # features_to_keep = [1, 2, 3, 4, 5, 6, 8, 9, 13, 17, 20, 21]
+    # feature_file1 = '/home/balaskas/flexaf/data/analog/spd_pruned_mean_sum_renamed__diff_fs_fcnn_spd___2025.08.06-20.55.49.900.csv'
+    # feature_file2 = '/home/balaskas/flexaf/data/analog/spd_pruned_min_max_renamed__diff_fs_fcnn_spd___2025.08.06-20.55.49.900.csv'
+
+    # expdir = '/home/balaskas/flexaf/saved_logs/daphnet/diff_fs_fcnn_daphnet___2025.08.09-15.54.48.863'
+    # fold, trial, sparsity = 2, 3, 0.5
+    # dataset_type = DatasetType.DaphNET
+    # dataset_file = 'data/daphnet.csv'
+    # subjects_to_keep = ['S01R02', 'S03R03', 'S06R02']
+    # features_to_keep = [28, 29, 31, 32, 33]
+    # feature_file1= '/home/balaskas/flexaf/data/analog/DaphNet_max_min_renamed__diff_fs_fcnn_daphnet___2025.08.09-15.54.48.863.csv'
+    # feature_file2 = '/home/balaskas/flexaf/data/analog/DaphNet_mean_sum_renamed__diff_fs_fcnn_daphnet___2025.08.09-15.54.48.863.csv'
+
+    ### new harth solution
+    expdir = '/home/balaskas/flexaf/saved_logs/harth/diff_fs_fcnn_harth___2025.08.09-07.56.42.749'
+    fold, trial, sparsity = 2, 1, 0.05
+    dataset_type = DatasetType.HARTH
+    dataset_file = 'data/harth.csv'
+    subjects_to_keep = ['S008', 'S014', 'S019', 'S024', 'S029']
+    features_to_keep = [0, 1, 5, 12, 13, 15, 16, 17, 20]
+    feature_file1 = '/home/balaskas/flexaf/data/analog/Harth_pruned_meansum_new_renamed__diff_fs_fcnn_harth___2025.08.09-07.56.42.749.csv'
+    feature_file2 = '/home/balaskas/flexaf/data/analog/Harth_pruned_minmax_new_renamed__diff_fs_fcnn_harth___2025.08.09-07.56.42.749.csv'
+
+    ### new harth solution. MEAN/MIN only
+    # expdir = '/home/balaskas/flexaf/saved_logs/harth/diff_fs_fcnn_harth___2025.08.10-15.39.29.956'
+    # fold, trial, sparsity = 2, 3, 0.2
+    # dataset_type = DatasetType.HARTH
+    # dataset_file = 'data/harth.csv'
+    # subjects_to_keep = ['S012', 'S017', 'S022', 'S027']
+    # features_to_keep = [0, 1, 3, 6, 7, 11]  # only mean/min features
+    # use_only_mean_min = True
+    # feature_file1 = '/home/balaskas/flexaf/data/analog/Harth_mean_11.8_renamed.csv'
+    # feature_file2 = '/home/balaskas/flexaf/data/analog/Harth_min_11.8_renamed.csv'
 
     # load the saved model and test set and evaluate its accuracy
     model, x_test_sub, y_test_categ, accuracy = load_and_evaluate_model(expdir, fold, sparsity, trial)
@@ -232,16 +236,20 @@ if __name__ == "__main__":
     resampling_rate = 32
     x_test_remade, y_test_remade_categ, remade_accuracy, sensor_names = verify_feature_extraction_and_evaluation(
         model, dataset_type, dataset_file, resampling_rate, subjects_to_keep, features_to_keep,
-        input_precision=31
+        save_dataset=False,
+        use_all_features=use_all_features,
+        use_only_mean_sum=use_only_mean_sum,
+        use_only_mean_min=use_only_mean_min,
+        input_precision=4,
     )
     x_test_remade_np = x_test_remade.values
 
     # load the analog test set features
     analog_df = merge_analog_features(
         feature_file1, feature_file2, #feature_file3,
-        remove_x_columns=True, input_precision=32,
+        remove_x_columns=True, 
+        input_precision=32,
     )
-
     # align the number of samples in the analog test set with the remade test set
     if x_test_remade.shape[0] != analog_df.shape[0]:
         min_length = min(x_test_remade.shape[0], analog_df.shape[0])
@@ -249,7 +257,7 @@ if __name__ == "__main__":
         x_test_remade = x_test_remade[:min_length]
         x_test_remade_np = x_test_remade_np[:min_length, :]
         y_test_remade_categ = y_test_remade_categ[:min_length, :]
-
+    # align the columns of the analog test set with the remade test set
     analog_df = align_dataframe_columns(x_test_remade, analog_df, sensor_names)
     x_test_analog = analog_df.values
 
@@ -264,6 +272,11 @@ if __name__ == "__main__":
     # evaluate the model on the analog test set
     analog_accuracy = model.evaluate(x_test_analog, y_test_remade_categ, verbose=0)[1]
     print(f"Analog test set accuracy: {analog_accuracy:.5f}")
+
+    # save analog test data
+    resdir = os.path.join(expdir, 'results', 'data', 'analog_test_set')
+    os.makedirs(resdir, exist_ok=True)
+    analog_df.to_csv(os.path.join(resdir, f'analog_test_set_fold{fold}_pruned_{sparsity:.3f}_trial{trial}.csv'), index=False)
 
     # calculate the mse between each column of the original test set and the analog test set
     mse_values = [mse(x_test_remade_np[:, i], x_test_analog[:, i]) for i in range(x_test_remade_np.shape[1])]
