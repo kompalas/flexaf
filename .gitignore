@@ -60,3 +60,5 @@ tech_lib/
 
 saved_logs/**/data/
 saved_logs/**/classifiers/
+# too large
+saved_logs/stressinnurses/
