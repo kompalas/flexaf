@@ -148,6 +148,7 @@ def post_training_pruning(model,
         Logger for messages.
     """
     os.makedirs(savedir, exist_ok=True)
+    original_weights = [copy.deepcopy(layer.get_weights()) for layer in model.layers]
 
     # Baseline
     baseline_acc = evaluate_model(model, x_val, y_val, batch_size=batch_size)
@@ -228,6 +229,7 @@ def lottery_ticket_pruning(model,
                             max_iterations=10,
                             batch_size=128,
                             savedir="results",
+                            strict=True,
                             logger=None):
     """
     Perform Lottery Ticket Pruning on the given model with iterative magnitude pruning.
@@ -321,10 +323,19 @@ def lottery_ticket_pruning(model,
 
     # Sanity check
     if final_acc < baseline_acc - accuracy_drop_threshold:
-        raise ValueError(
-            f"Final accuracy {final_acc:.4f} is below the allowed drop threshold "
-            f"of {baseline_acc - accuracy_drop_threshold:.4f}"
-        )
+        if strict:
+            raise ValueError(
+                f"Final accuracy {final_acc:.4f} is below the allowed drop threshold "
+                f"of {baseline_acc - accuracy_drop_threshold:.4f}"
+            )
+        else:
+            # revert back to the original weights
+            logger.warning(
+                f"Final accuracy {final_acc:.4f} is below the allowed drop threshold "
+                f"of {baseline_acc - accuracy_drop_threshold:.4f}. Reverting to original weights."
+            )
+            reset_weights(model, original_weights)
+    
 
     return model
 
@@ -344,6 +355,8 @@ if __name__ == "__main__":
     parser.add_argument('--weight-precision', type=int, default=8, help='Weight precision for HW evaluation')
     parser.add_argument('--input-precision', type=int, default=4, help='Input precision for HW evaluation')
     parser.add_argument('--post-training-pruning', action='store_true', help='Use post-training pruning instead of lottery ticket pruning')
+    parser.add_argument('--load-new-model-path', type=str, default=None, help='Path to load a new model instead of the one from results')
+    parser.add_argument('--resampling-rate', type=int, default=32, help='Resampling rate for input data')
     args = parser.parse_args()
 
     expdir = args.expdir
@@ -357,6 +370,8 @@ if __name__ == "__main__":
     accuracy_drop_threshold = args.accuracy_drop_threshold
     weight_precision = args.weight_precision
     input_precision = args.input_precision
+    load_new_model_path = args.load_new_model_path
+    resampling_rate = args.resampling_rate 
     
     # expdir = '/home/balaskas/flexaf/saved_logs/wesad_merged/diff_fs_fcnn_wesad_merged___2025.08.06-16.16.48.524'
     # fold = 0
@@ -369,17 +384,26 @@ if __name__ == "__main__":
     # accuracy_drop_threshold = 0.01
 
     # load the saved model and train/test sets
-    model_name = f'gate_model_fold{fold}_pruned_{sparsity:.3f}_trial{trial}.keras'
-    model = tf.keras.models.load_model(
-        os.path.join(expdir, 'results', 'classifiers', model_name),
-    )
+    if load_new_model_path is not None:
+        model_name = args.load_new_model_path
+        model = tf.keras.models.load_model(model_name)
+    else:
+        model_name = f'gate_model_fold{fold}_pruned_{sparsity:.3f}_trial{trial}.keras'
+        model = tf.keras.models.load_model(
+            os.path.join(expdir, 'results', 'classifiers', model_name),
+        )
     x_test_sub = np.load(os.path.join(expdir, 'results', 'data', f'x_test_fold{fold}_pruned_{sparsity:.3f}_trial{trial}.npy'))
     y_test = np.load(os.path.join(expdir, 'results', 'data', f'y_test_fold{fold}.npy'))
     y_test_categ = transform_categorical(y_test, num_classes=model.output_shape[-1])
     x_train_sub = np.load(os.path.join(expdir, 'results', 'data', f'x_train_fold{fold}_pruned_{sparsity:.3f}_trial{trial}.npy'))
     y_train = np.load(os.path.join(expdir, 'results', 'data', f'y_train_fold{fold}.npy'))
     y_train_categ = transform_categorical(y_train, num_classes=model.output_shape[-1])
-    x_test_analog = pd.read_csv(os.path.join(expdir, 'results', 'data', f'analog_test_set', f'analog_test_set_fold{fold}_pruned_{sparsity:.3f}_trial{trial}.csv'))
+    try:
+        x_test_analog = pd.read_csv(os.path.join(expdir, 'results', 'data', f'analog_test_set', 
+                                                f'analog_test_set_{resampling_rate}hz_fold{fold}_pruned_{sparsity:.3f}_trial{trial}.csv'))
+    except FileNotFoundError:
+        x_test_analog = pd.read_csv(os.path.join(expdir, 'results', 'data', f'analog_test_set', 
+                                                f'analog_test_set_fold{fold}_pruned_{sparsity:.3f}_trial{trial}.csv'))
 
     logger = setup_logger(os.path.join(expdir, "lottery_ticket.log"))
     savedir = os.path.join(expdir, 'checkpoints')
@@ -416,6 +440,7 @@ if __name__ == "__main__":
             max_retries=7,
             max_iterations=10,
             savedir=savedir,
+            strict=False,
             logger=logger
         )
 

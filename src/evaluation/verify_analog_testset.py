@@ -9,7 +9,7 @@ from src.args import DatasetType
 from src.dataset import get_dataset
 from src.selection.simple_eval_bkp import select_specific_features
 from src.features import create_features_from_df_subjectwise
-from src.selection import kept_features
+from src import project_dir
 
 
 def load_and_evaluate_model(expdir, fold, sparsity, trial):
@@ -33,6 +33,7 @@ def verify_feature_extraction_and_evaluation(model, dataset_type, dataset_file,
                                              resampling_rate, subjects_to_keep,features_to_keep, 
                                              save_dataset=False,
                                              input_precision=4, window_size=1, target_clock=1,
+                                             retrain_from_scratch=False,
                                              use_all_features=False, use_only_mean_sum=False, use_only_mean_min=False):
     data, sampling_rates, dataset_sr = get_dataset(
         dataset_type, dataset_file,
@@ -41,10 +42,36 @@ def verify_feature_extraction_and_evaluation(model, dataset_type, dataset_file,
         three_class_classification=True,
         test_size=None,
     )
-    pruned_data, features_dict = select_specific_features(data, dataset_type, subjects_to_keep, features_to_keep, save_dataset=save_dataset,
-                                                          use_all_features=use_all_features,
-                                                          use_only_mean_sum=use_only_mean_sum,
-                                                          use_only_mean_min=use_only_mean_min)
+    return_values = select_specific_features(data, dataset_type, subjects_to_keep, features_to_keep,
+                                            save_dataset=save_dataset,
+                                            return_train_data=retrain_from_scratch,
+                                            use_all_features=use_all_features,
+                                            use_only_mean_sum=use_only_mean_sum,
+                                            use_only_mean_min=use_only_mean_min)
+    
+    if not retrain_from_scratch:
+        pruned_data, features_dict = return_values
+    else:
+        train_data, pruned_data, features_dict = return_values
+        # if training, we need to create features from the training data as well
+        x_train, y_train = create_features_from_df_subjectwise(
+            data=train_data,
+            features_dict=features_dict,
+            inputs_precisions=[input_precision] * train_data.shape[1],
+            sampling_rates=[dataset_sr] * train_data.shape[1],
+            original_sampling_rate=dataset_sr,
+            window_size=window_size,
+            target_clock=target_clock
+        )
+        y_train_categ = transform_categorical(y_train, num_classes=model.output_shape[-1])
+        # re-initialize the model
+        model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+        # train the model on the remade training set
+        model.fit(x_train, y_train_categ, epochs=50, batch_size=32, verbose=1, 
+                  callbacks=[tf.keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True)])
+        # save the retrained model
+        model.save(os.path.join(project_dir, 'retrained_model.keras'))
+
     x_test_remade, y_test_remade = create_features_from_df_subjectwise(
         data=pruned_data,
         features_dict=features_dict,
@@ -151,6 +178,8 @@ if __name__ == "__main__":
     use_all_features = False
     use_only_mean_sum = False
     use_only_mean_min = False
+    retrain_from_scratch = False
+    resampling_rate = 32
 
     # expdir = '/home/balaskas/flexaf/saved_logs/wesad_merged/diff_fs_fcnn_wesad_merged___2025.08.08-08.00.07.792'
     # fold = 4
@@ -188,16 +217,22 @@ if __name__ == "__main__":
     # feature_file1 = '/home/balaskas/flexaf/data/analog/Harth_pruned_minmax_renamed__diff_fs_fcnn_harth___2025.08.07-19.46.46.517.csv'
     # feature_file2 = '/home/balaskas/flexaf/data/analog/Harth_pruned_mean_renamed__diff_fs_fcnn_harth___2025.08.07-19.46.46.517.csv'  # only for mean features
 
-    # expdir = '/home/balaskas/flexaf/saved_logs/spd/diff_fs_fcnn_spd___2025.08.06-20.55.49.900'
-    # fold, trial, sparsity = 1, 4, 0.2
-    # # fold, trial, sparsity = 1, 1, 0.5
-    # dataset_type = DatasetType.SPD
-    # dataset_file = 'data/spd.csv'
-    # subjects_to_keep = [2, 7, 12, 17, 22, 27, 32]
-    # features_to_keep = [0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21, 23]
-    # # features_to_keep = [1, 2, 3, 4, 5, 6, 8, 9, 13, 17, 20, 21]
-    # feature_file1 = '/home/balaskas/flexaf/data/analog/spd_pruned_mean_sum_renamed__diff_fs_fcnn_spd___2025.08.06-20.55.49.900.csv'
-    # feature_file2 = '/home/balaskas/flexaf/data/analog/spd_pruned_min_max_renamed__diff_fs_fcnn_spd___2025.08.06-20.55.49.900.csv'
+    expdir = '/home/balaskas/flexaf/saved_logs/spd/diff_fs_fcnn_spd___2025.08.06-20.55.49.900'
+    fold, trial, sparsity = 1, 4, 0.2
+    # fold, trial, sparsity = 1, 1, 0.5
+    dataset_type = DatasetType.SPD
+    dataset_file = 'data/spd.csv'
+    subjects_to_keep = [2, 7, 12, 17, 22, 27, 32]
+    features_to_keep = [0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21, 23]
+    # features_to_keep = [1, 2, 3, 4, 5, 6, 8, 9, 13, 17, 20, 21]
+    feature_file1 = '/home/balaskas/flexaf/data/analog/spd_pruned_mean_sum_renamed__diff_fs_fcnn_spd___2025.08.06-20.55.49.900.csv'
+    feature_file2 = '/home/balaskas/flexaf/data/analog/spd_pruned_min_max_renamed__diff_fs_fcnn_spd___2025.08.06-20.55.49.900.csv'
+
+    # ### same spd at 16Hz - uncomment along with the above
+    feature_file1 = '/home/balaskas/flexaf/data/analog/spd_16_mean_sum_renamed.csv'
+    feature_file2 = '/home/balaskas/flexaf/data/analog/spd_16_max_min_renamed.csv'
+    resampling_rate = 16
+    retrain_from_scratch = True
 
     # expdir = '/home/balaskas/flexaf/saved_logs/daphnet/diff_fs_fcnn_daphnet___2025.08.09-15.54.48.863'
     # fold, trial, sparsity = 2, 3, 0.5
@@ -208,15 +243,21 @@ if __name__ == "__main__":
     # feature_file1= '/home/balaskas/flexaf/data/analog/DaphNet_max_min_renamed__diff_fs_fcnn_daphnet___2025.08.09-15.54.48.863.csv'
     # feature_file2 = '/home/balaskas/flexaf/data/analog/DaphNet_mean_sum_renamed__diff_fs_fcnn_daphnet___2025.08.09-15.54.48.863.csv'
 
+    ### same daphnet at 16Hz - uncomment along with the above
+    # feature_file1 = '/home/balaskas/flexaf/data/analog/DaphNet_16_max_min_renamed.csv'
+    # feature_file2 = '/home/balaskas/flexaf/data/analog/DaphNet_16_mean_sum_renamed.csv'
+    # resampling_rate = 16
+    # retrain_from_scratch = True
+
     ### new harth solution
-    expdir = '/home/balaskas/flexaf/saved_logs/harth/diff_fs_fcnn_harth___2025.08.09-07.56.42.749'
-    fold, trial, sparsity = 2, 1, 0.05
-    dataset_type = DatasetType.HARTH
-    dataset_file = 'data/harth.csv'
-    subjects_to_keep = ['S008', 'S014', 'S019', 'S024', 'S029']
-    features_to_keep = [0, 1, 5, 12, 13, 15, 16, 17, 20]
-    feature_file1 = '/home/balaskas/flexaf/data/analog/Harth_pruned_meansum_new_renamed__diff_fs_fcnn_harth___2025.08.09-07.56.42.749.csv'
-    feature_file2 = '/home/balaskas/flexaf/data/analog/Harth_pruned_minmax_new_renamed__diff_fs_fcnn_harth___2025.08.09-07.56.42.749.csv'
+    # expdir = '/home/balaskas/flexaf/saved_logs/harth/diff_fs_fcnn_harth___2025.08.09-07.56.42.749'
+    # fold, trial, sparsity = 2, 1, 0.05
+    # dataset_type = DatasetType.HARTH
+    # dataset_file = 'data/harth.csv'
+    # subjects_to_keep = ['S008', 'S014', 'S019', 'S024', 'S029']
+    # features_to_keep = [0, 1, 5, 12, 13, 15, 16, 17, 20]
+    # feature_file1 = '/home/balaskas/flexaf/data/analog/Harth_pruned_meansum_new_renamed__diff_fs_fcnn_harth___2025.08.09-07.56.42.749.csv'
+    # feature_file2 = '/home/balaskas/flexaf/data/analog/Harth_pruned_minmax_new_renamed__diff_fs_fcnn_harth___2025.08.09-07.56.42.749.csv'
 
     ### new harth solution. MEAN/MIN only
     # expdir = '/home/balaskas/flexaf/saved_logs/harth/diff_fs_fcnn_harth___2025.08.10-15.39.29.956'
@@ -233,10 +274,10 @@ if __name__ == "__main__":
     model, x_test_sub, y_test_categ, accuracy = load_and_evaluate_model(expdir, fold, sparsity, trial)
 
     # verify the accuracy with newly extracted features
-    resampling_rate = 32
     x_test_remade, y_test_remade_categ, remade_accuracy, sensor_names = verify_feature_extraction_and_evaluation(
         model, dataset_type, dataset_file, resampling_rate, subjects_to_keep, features_to_keep,
         save_dataset=False,
+        retrain_from_scratch=retrain_from_scratch,
         use_all_features=use_all_features,
         use_only_mean_sum=use_only_mean_sum,
         use_only_mean_min=use_only_mean_min,
@@ -247,8 +288,8 @@ if __name__ == "__main__":
     # load the analog test set features
     analog_df = merge_analog_features(
         feature_file1, feature_file2, #feature_file3,
-        remove_x_columns=True, 
-        input_precision=32,
+        remove_x_columns=True, N=2, vref=1.0,
+        input_precision=4,
     )
     # align the number of samples in the analog test set with the remade test set
     if x_test_remade.shape[0] != analog_df.shape[0]:
@@ -276,7 +317,7 @@ if __name__ == "__main__":
     # save analog test data
     resdir = os.path.join(expdir, 'results', 'data', 'analog_test_set')
     os.makedirs(resdir, exist_ok=True)
-    analog_df.to_csv(os.path.join(resdir, f'analog_test_set_fold{fold}_pruned_{sparsity:.3f}_trial{trial}.csv'), index=False)
+    analog_df.to_csv(os.path.join(resdir, f'analog_test_set_{resampling_rate}hz_fold{fold}_pruned_{sparsity:.3f}_trial{trial}.csv'), index=False)
 
     # calculate the mse between each column of the original test set and the analog test set
     mse_values = [mse(x_test_remade_np[:, i], x_test_analog[:, i]) for i in range(x_test_remade_np.shape[1])]
@@ -285,6 +326,11 @@ if __name__ == "__main__":
     print("MAE between original and analog test set features:", mae_values)
     print("MSE mean:", np.mean(mse_values))
     print("MAE mean:", np.mean(mae_values))
+
+    # calculate the correlation between each column of the original test set and the analog test set
+    correlations = [np.corrcoef(x_test_remade_np[:, i], x_test_analog[:, i])[0, 1] for i in range(x_test_remade_np.shape[1])]
+    print("Correlations between original and analog test set features:", correlations)
+    print("Average correlation:", np.mean(correlations))
 
     # get the per-feature errors
     for feature_name in ['min', 'max', 'mean', 'sum']:

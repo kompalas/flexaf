@@ -36,7 +36,7 @@ python3 $maindir/src/pruning.py \
     --pruning-retraining-epochs 10 \
     --final-retraining-epochs 10 \
     --initial-sparsity 0.9 \
-    --sparsity-divider 1.2 \
+    --sparsity-divider 1.5 \
     --accuracy-drop-threshold 0.02 \
     --weight-precision 8 \
     --input-precision 4
@@ -49,13 +49,14 @@ python3 $maindir/src/pruning.py \
     --fold 1 \
     --sparsity 0.2 \
     --trial 4 \
-    --pruning-retraining-epochs 10 \
+    --pruning-retraining-epochs 20 \
     --final-retraining-epochs 10 \
     --initial-sparsity 0.5 \
-    --sparsity-divider 1.5 \
-    --accuracy-drop-threshold 0.02 \
+    --sparsity-divider 1.2 \
+    --accuracy-drop-threshold 0.015 \
     --weight-precision 8 \
-    --input-precision 4
+    --input-precision 4 \
+    --load-new-model-path $maindir/retrained_model.keras 
 
 
 elif [[ "$dataset" == "daphnet" ]]; then

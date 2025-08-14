@@ -1,25 +1,25 @@
 #set the library path
 export ENV_LIBRARY_PATH="/usr/local/eda/synLibs/FlexIC/G3SC_T5_v1/db"
 #set the library name
-export ENV_LIBRARY_DB="flexic3_T5_typ_1p50v.db"
+export ENV_LIBRARY_DB="flexic3_T5_typ_3p00v.db"  
+# flexic3_T5_typ_1p50v.db
 #set library verilog path
 export ENV_LIBRARY_VERILOG_PATH="/usr/local/eda/synLibs/FlexIC/G3SC_T5_v1/verilog"
 
 #set the top design name
-export ENV_TOP_DESIGN="top"
+export ENV_TOP_DESIGN="feature_shift_reg"
 #set the desired delay
-export ENV_CLK_PERIOD="1000000.0"
-export ENV_CLK_PERIOD="1000000.0"
+export ENV_CLK_PERIOD="100000.0"
 
 
 #clock name and reset (if applicable)
 export ENV_CLK_PORT="clk"
-export ENV_RST_PORT="rst_n"
+export ENV_RST_PORT="rst"
 #set ENV_VIRTUAL_CLOCK to false if the design contains a clock or to true if not
 export ENV_VIRTUAL_CLOCK="false"
 
 #set tb name
-export ENV_TB_NAME="top_tb"
+export ENV_TB_NAME="feature_shift_reg_tb"
 #vcd name
 export ENV_DUMPFILE="$(pwd)/sim/${ENV_TOP_DESIGN}.fsdb"
 export ENV_DUT_NAME="DUT"

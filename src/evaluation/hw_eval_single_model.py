@@ -49,6 +49,7 @@ def hw_eval_with_single_model(
         input_precision=input_precision,
         weight_precision=weight_precision,
         savedir=this_hw_eval_dir,
+        simclk_ms=1,
         cleanup=True,
         rescale_inputs=not all_inputs_integer,
         prefix=experiment_name,

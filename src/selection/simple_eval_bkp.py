@@ -108,6 +108,7 @@ def perform_basic_evaluation_random_split(args):
 
 
 def select_specific_features(data, dataset_type, subjects_to_keep, features_to_keep, save_dataset=True,
+                             return_train_data=False,
                              use_all_features=False, use_only_mean_sum=False, use_only_mean_min=False):
     """Select specific features from the dataset."""
     if isinstance(data, (list, tuple)) and len(data) == 2:
@@ -116,6 +117,8 @@ def select_specific_features(data, dataset_type, subjects_to_keep, features_to_k
 
     # Filter the data to keep only the specified subjects and save to csv
     pruned_data = data[data['subject'].isin(subjects_to_keep)]
+    train_data = data[~data['subject'].isin(subjects_to_keep)]
+
     # add a new index column called time, i.e., an ascending integer starting from 0
     pruned_data['time'] = np.arange(len(pruned_data))
     if save_dataset:
@@ -152,6 +155,8 @@ def select_specific_features(data, dataset_type, subjects_to_keep, features_to_k
             features_dict_to_keep[sensor] = []
         features_dict_to_keep[sensor].append(feature_name)
 
+    if return_train_data:
+        return train_data, pruned_data, features_dict_to_keep
     return pruned_data, features_dict_to_keep
 
 
@@ -234,14 +239,14 @@ if __name__ == "__main__":
 
     from src.args import DatasetType
 
-    dataset_type = DatasetType.HARTH
-    dataset_file = 'data/harth.csv'
+    dataset_type = DatasetType.DaphNET
+    dataset_file = 'data/daphnet.csv'
     subjects_to_keep = ['S012', 'S017', 'S022', 'S027']
     features_to_keep = [0, 1, 3, 6, 7, 11] 
 
     data, sampling_rates, dataset_sr = get_dataset(
         dataset_type, dataset_file,
-        resampling_rate=32,
+        resampling_rate=16,
         binary_classification=False,
         three_class_classification=True,
         test_size=None,
