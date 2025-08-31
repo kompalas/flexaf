@@ -26,7 +26,7 @@ It integrates **stochastic feature gating**, **cost-aware regularization**, and 
   Look-Up Table (LUT)-based hardware cost modeling for analog feature extraction.
 
 - 🔗 **End-to-End Pipeline**  
-  Supports flexible, mixed-signal wearables for healthcare at the extreme edge.
+  Supports flexible, mixed-signal wearables for healthcare at the extreme edge. All MLP designs are **fully evaluated** in hardware using EDA tools (e.g., Synopsys suite).
 
 ---
 
