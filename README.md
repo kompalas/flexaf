@@ -33,7 +33,7 @@ It integrates **stochastic feature gating**, **cost-aware regularization**, and 
 ## 📦 Technologies Used
 
 - Python 3  
-- PyTorch (for differentiable gating and training)  
+- Tensorflow (for differentiable gating and training)  
 - Gumbel–Sigmoid distributions for stochastic gating  
 - Conda environment management  
 - YAML-based experiment configuration  
@@ -63,15 +63,15 @@ All experiment parameters are defined in run/args.yaml, which controls:
 - Hardware cost constraints
 - Pruning thresholds
  
-To run the default experiment use:
+To run the default basic evaluation, use:
 ```bash
 ./run/main.sh
 ```
-To run differentiable feature selection optimization
+To run differentiable feature selection optimization, use the following script, which automatically modifies ```run/args.yaml```:
 ```bash
 ./run/gates.sh
 ```
-To run lottery ticket pruning and retraining
+Similarly, to run lottery ticket pruning and retraining, use:
 ```bash
 ./run/lottery_ticket.sh
 ```
